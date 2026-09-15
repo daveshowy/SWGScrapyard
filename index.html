@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Scrapyard — SWG Restoration vehicle tinkering</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#141a21; --pane:#1b232c; --pane-2:#212b36; --line:#2c3947; --line-2:#3a4a5c;
+  --ink:#dfe7ee; --ink-2:#9fb0c0; --ink-3:#6b7d8f;
+  --q-red:#e05a4e; --q-orange:#e8933a; --q-yellow:#e2c94a; --q-blue:#4aa3e8; --q-green:#5ad07a;
+  --accent:#7cc4ff; --danger:#e05a4e;
+  --r:6px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "IBM Plex Sans",system-ui,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+h1{font-size:18px;font-weight:600;margin:0}
+h2{font-size:15px;font-weight:600;margin:0 0 10px}
+h3{font-size:13px;font-weight:600;margin:14px 0 6px;color:var(--ink-2)}
+p{margin:0 0 8px}
+.muted{color:var(--ink-2)} .dim{color:var(--ink-3)}
+small{font-size:12px}
+
+header{display:flex;align-items:baseline;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header .spacer{flex:1}
+header .meta{color:var(--ink-3);font-size:12px}
+header .beta{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--q-yellow);border:1px solid var(--q-yellow);border-radius:10px;padding:0 7px;line-height:17px;align-self:center}
+header .byline{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2)}
+
+main{display:grid;grid-template-columns:minmax(300px,1.05fr) minmax(320px,1fr) minmax(320px,1fr);gap:0;min-height:calc(100vh - 52px)}
+.pane{padding:16px 18px;border-right:1px solid var(--line);overflow:auto;max-height:calc(100vh - 52px)}
+.pane:last-child{border-right:0}
+@media (max-width:1100px){main{grid-template-columns:1fr 1fr}.pane{max-height:none}}
+@media (max-width:760px){main{grid-template-columns:1fr}.pane{border-right:0;border-bottom:1px solid var(--line)}}
+
+.btn{background:var(--pane-2);border:1px solid var(--line-2);border-radius:var(--r);padding:7px 12px;cursor:pointer;transition:background .12s}
+.btn:hover{background:#28343f}
+.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.btn.primary{background:#245a8a;border-color:#2f6fa8}
+.btn.primary:hover{background:#2a6aa1}
+.btn.small{padding:4px 9px;font-size:12px}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--ink-2)}
+.btn.ghost:hover{background:var(--pane-2);color:var(--ink)}
+.btn.danger{color:var(--danger)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row.between{justify-content:space-between}
+.stack{display:flex;flex-direction:column;gap:8px}
+
+input[type=text],input[type=number],select,textarea{background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r);padding:6px 8px;width:100%}
+input[type=number]{width:84px}
+textarea{min-height:90px;font-family:inherit;resize:vertical}
+label.inline{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+
+.card{background:var(--pane);border:1px solid var(--line);border-radius:var(--r);padding:12px;margin-bottom:12px}
+.card.tight{padding:8px 10px}
+
+/* capture */
+.capture-stage{position:relative;background:#000;border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden;min-height:180px}
+.capture-stage video,.capture-stage img{display:block;width:100%;height:auto}
+.capture-stage canvas.overlay{position:absolute;top:0;left:0;cursor:crosshair}
+.capture-hint{position:absolute;left:0;right:0;bottom:0;padding:6px 10px;background:rgba(20,26,33,.85);font-size:12px;color:var(--ink-2)}
+.empty{display:flex;align-items:center;justify-content:center;min-height:180px;color:var(--ink-3);text-align:center;padding:20px}
+.crop-preview{border:1px solid var(--line-2);border-radius:var(--r);max-width:100%;image-rendering:auto;background:#000}
+.ocr-status{font-size:12px;color:var(--ink-2)}
+
+/* quality */
+.q{font-weight:600}
+.q-red{color:var(--q-red)} .q-orange{color:var(--q-orange)} .q-yellow{color:var(--q-yellow)} .q-blue{color:var(--q-blue)} .q-green{color:var(--q-green)}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%}
+.bar.red i{background:var(--q-red)} .bar.orange i{background:var(--q-orange)} .bar.yellow i{background:var(--q-yellow)} .bar.blue i{background:var(--q-blue)} .bar.green i{background:var(--q-green)}
+
+/* stash */
+.type-block{margin-bottom:14px}
+.type-head{display:flex;align-items:baseline;gap:8px;padding:6px 0;border-bottom:1px solid var(--line-2);margin-bottom:6px}
+.type-head h2{margin:0}
+.type-head .count{color:var(--ink-3);font-size:12px}
+.part{border:1px solid var(--line);border-radius:var(--r);padding:8px 10px;margin-bottom:6px;background:var(--pane)}
+.part.excluded{opacity:.5}
+.part.dominated{border-style:dashed}
+.part-head{display:flex;align-items:center;gap:8px}
+.part-head .name{flex:1;font-weight:500;background:transparent;border:0;padding:2px 0;min-width:0}
+.part-head .name:focus{border-bottom:1px solid var(--accent);outline:0}
+.tag{font-size:11px;padding:1px 6px;border-radius:10px;border:1px solid var(--line-2);color:var(--ink-2)}
+.tag.cand{border-color:#5a6f2a;color:#b7d16a}
+.tag.dom{border-color:var(--line-2);color:var(--ink-3)}
+.attrs{display:grid;grid-template-columns:auto 1fr auto auto;gap:3px 10px;align-items:center;margin-top:6px;font-size:13px}
+.attrs .an{color:var(--ink-2)} .attrs .araw{color:var(--ink-3);font-size:12px;text-align:right}
+.attrs input{width:64px;padding:2px 5px;text-align:right;background:transparent;border:1px solid transparent;border-radius:4px}
+.attrs input:hover,.attrs input:focus{border-color:var(--line-2);background:var(--bg)}
+.perf-sep{grid-column:1/-1;height:1px;background:var(--line);margin:2px 0}
+
+/* results */
+.result-grid{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center;font-size:13px}
+.combo{padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:6px;background:var(--pane-2)}
+.combo .parts{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.chip{background:var(--bg);border:1px solid var(--line-2);border-radius:4px;padding:2px 8px;font-size:12px}
+.chip.cand{border-color:#5a6f2a}
+.shortfall{color:var(--q-orange);font-size:13px}
+.segmented{display:inline-flex;border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden}
+.segmented button{background:transparent;border:0;padding:5px 10px;cursor:pointer;color:var(--ink-2)}
+.segmented button.on{background:var(--pane-2);color:var(--ink)}
+.balance{display:grid;grid-template-columns:1fr auto auto auto;gap:6px 10px;align-items:center;font-size:13px}
+.balance .sys{font-weight:500}
+.ok{color:var(--q-green)} .bad{color:var(--q-red)}
+.assume{font-size:12px;color:var(--ink-3);border-left:2px solid var(--line-2);padding-left:8px;margin-top:8px}
+details summary{cursor:pointer;color:var(--ink-2)}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#245a8a;border:1px solid #2f6fa8;padding:8px 14px;border-radius:var(--r);opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Scrapyard</h1>
+  <span class="beta">beta</span>
+  <span class="muted">Vehicle component RE planner for SWG Restoration — read-only, nothing leaves your PC</span>
+  <span class="byline">
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 12c3-4.5 7-6.5 11-6.5 2.5 0 4.5 1 6 2.5l1.5-3v11l-1.5-3c-1.5 1.5-3.5 2.5-6 2.5-4 0-8-2-11-6.5z" fill="#4aa3e8"/>
+      <path d="M3 12c3-4.5 7-6.5 11-6.5" fill="none" stroke="#7cc4ff" stroke-width="1.2"/>
+      <path d="M9 12.5c1 1.3 2.3 2 3.8 2.2" fill="none" stroke="#245a8a" stroke-width="1.1" stroke-linecap="round"/>
+      <circle cx="7.6" cy="10.6" r="1.6" fill="#141a21"/><circle cx="7.9" cy="10.3" r=".6" fill="#dfe7ee"/>
+      <path d="M11.5 6.2l1.5-2.4 1.4 2.2" fill="#245a8a"/>
+    </svg>
+    by OnePound Fish
+  </span>
+  <span class="spacer"></span>
+  <span class="meta" id="storage-note"></span>
+  <button class="btn small ghost" id="btn-export">Export stash</button>
+  <label class="btn small ghost">Import<input type="file" id="file-import" accept="application/json" hidden></label>
+</header>
+
+<main>
+<!-- ================= CAPTURE ================= -->
+<section class="pane" id="pane-capture">
+  <h2>Read a part from the game</h2>
+  <div class="row" style="margin-bottom:10px">
+    <button class="btn primary" id="btn-share">Share game window</button>
+    <button class="btn" id="btn-stop" disabled>Stop</button>
+    <label class="btn">Load screenshot<input type="file" id="file-shot" accept="image/*" hidden></label>
+  </div>
+  <p class="dim"><small>Or paste a screenshot with Ctrl+V anywhere on this page.</small></p>
+
+  <div class="capture-stage" id="stage">
+    <div class="empty" id="stage-empty">Share your SWG window, open a component's examine window, and draw a box over it here. Then start reading and go through your parts in-game one by one.</div>
+    <video id="video" autoplay muted playsinline hidden></video>
+    <img id="shot" hidden alt="">
+    <canvas class="overlay" id="overlay" hidden></canvas>
+    <div class="capture-hint" id="stage-hint" hidden></div>
+  </div>
+
+  <div class="row" style="margin-top:8px">
+    <label class="inline"><span class="muted">Box</span><input type="number" id="box-w" value="360" min="80" step="10"> × <input type="number" id="box-h" value="300" min="60" step="10"></label>
+    <label class="inline"><input type="checkbox" id="opt-invert"> <span class="muted">Invert (light text on dark)</span></label>
+    <label class="inline"><span class="muted">Upscale</span><select id="opt-scale" style="width:auto"><option>2</option><option selected>3</option><option>4</option></select></label>
+  </div>
+
+  <div class="card" style="margin-top:10px">
+    <div class="row">
+      <button class="btn primary" id="btn-watch" disabled>Start reading</button>
+      <button class="btn" id="btn-read-once" disabled>Read box once</button>
+      <label class="inline"><span class="muted">Read as</span><select id="watch-type" style="width:auto"><option value="">auto-detect</option></select></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label class="inline"><span class="muted">Check every</span><input type="number" id="watch-interval" value="0.25" min="0.15" step="0.05" style="width:60px"> s</label>
+      <label class="inline"><input type="checkbox" id="watch-beep" checked> <span class="muted">Beep on capture</span></label>
+      <label class="inline"><input type="checkbox" id="watch-cand"> <span class="muted">Mark captured parts as not owned</span></label>
+    </div>
+    <p class="ocr-status" id="watch-status" style="margin:8px 0 0">Draw a box over a component examine window first.</p>
+    <div id="watch-log" style="margin-top:6px"></div>
+    <details open style="margin-top:8px"><summary>Last read (for troubleshooting)</summary>
+      <div id="watch-debug" class="dim" style="margin-top:6px"><small>Nothing read yet.</small></div>
+      <canvas id="watch-crop" class="crop-preview" style="margin-top:6px;max-height:200px"></canvas>
+      <textarea id="watch-raw" spellcheck="false" style="margin-top:6px" placeholder="Raw OCR text will appear here"></textarea>
+    </details>
+  </div>
+
+  <div class="card" id="ocr-card" hidden>
+    <div class="row between"><h2 style="margin:0">Read result</h2><span class="ocr-status" id="ocr-status"></span></div>
+    <canvas id="crop" class="crop-preview" style="margin:8px 0"></canvas>
+    <details><summary>Raw text from OCR</summary><textarea id="ocr-raw" spellcheck="false"></textarea><button class="btn small" id="btn-reparse" style="margin-top:6px">Re-parse text</button></details>
+
+    <h3>Review before saving</h3>
+    <div class="row" style="margin-bottom:6px">
+      <select id="draft-type" style="width:auto"></select>
+      <input type="text" id="draft-name" placeholder="Name (optional)" style="flex:1;min-width:120px">
+    </div>
+    <div class="attrs" id="draft-attrs"></div>
+    <div class="row" style="margin-top:10px">
+      <label class="inline"><input type="checkbox" id="draft-cand"> <span class="muted">Not owned yet (bazaar candidate)</span></label>
+      <span class="spacer" style="flex:1"></span>
+      <button class="btn primary" id="btn-save-draft">Add to stash</button>
+    </div>
+  </div>
+
+  <div class="card tight">
+    <details><summary>Add a part by hand</summary>
+      <div class="row" style="margin:8px 0 6px">
+        <select id="man-type" style="width:auto"></select>
+        <input type="text" id="man-name" placeholder="Name (optional)" style="flex:1;min-width:120px">
+      </div>
+      <div class="attrs" id="man-attrs"></div>
+      <div class="row" style="margin-top:8px">
+        <label class="inline"><input type="checkbox" id="man-cand"> <span class="muted">Not owned yet</span></label>
+        <span style="flex:1"></span>
+        <button class="btn" id="btn-save-man">Add to stash</button>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- ================= STASH ================= -->
+<section class="pane" id="pane-stash">
+  <div class="row between" style="margin-bottom:6px">
+    <h2 style="margin:0">Stash</h2>
+    <span class="dim"><small>Untick a part to leave it out of the calculations. Dashed parts add nothing over another part you have.</small></span>
+  </div>
+  <div id="stash"></div>
+</section>
+
+<!-- ================= RESULTS ================= -->
+<section class="pane" id="pane-results">
+  <h2>What you can build</h2>
+  <div class="row" style="margin-bottom:12px">
+    <span class="muted">Target</span>
+    <div class="segmented" id="target-seg">
+      <button data-t="80" class="on">All blue (80%+)</button>
+      <button data-t="100">All green (100%+)</button>
+      <button data-t="custom">Custom</button>
+    </div>
+    <input type="number" id="target-custom" value="90" min="0" max="125" hidden>
+  </div>
+  <div class="card" id="shopping"></div>
+  <div id="results"></div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Sub-system balance</h2>
+    <p class="muted"><small>Enter your vehicle's numbers from the datapad with no components installed, then pick which part fills each slot.</small></p>
+    <div class="balance" id="balance-base"></div>
+    <h3>Slots</h3>
+    <div class="stack" id="slots"></div>
+    <h3>Result</h3>
+    <div class="balance" id="balance-out"></div>
+    <div class="assume">Assumes the datapad's A/B is the sum of the six components' balancing raws (plus whatever the base vehicle contributes) and that a system is balanced when A ≤ B. If your datapad disagrees, adjust the base numbers until an all-stock vehicle matches, and tell me what you see.</div>
+  </div>
+</section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- game data (swgr.org wiki, Vehicle Tinkering System) ---------- */
+const TYPES = {
+  engine:     {label:'Engine',         perf:['Speed'],                          bal:['Mass','Fluctuation','Energy Drain','Heat']},
+  booster:    {label:'Booster',        perf:['Speed'],                          bal:['Mass','Fluctuation','Energy Drain','Heat']},
+  cooling:    {label:'Cooling System', perf:['Booster Duration','Booster Cooldown'], bal:['Mass','Fluctuation','Cooling']},
+  chassis:    {label:'Chassis',        perf:['Maintenance','Max Hitpoints'],    bal:['Mass','Integrity']},
+  stabilizer: {label:'Stabilizer',     perf:['Turn Rate','Turn Rate Max'],      bal:['Mass','Energy Drain','Stabilization']},
+  core:       {label:'Energy Core',    perf:['Accel Min','Accel Max','Decel'],  bal:['Mass','Heat','Power Generation']},
+};
+const ORDER = ['engine','booster','cooling','chassis','stabilizer','core'];
+const attrsOf = t => [...TYPES[t].perf, ...TYPES[t].bal];
+// balance systems: numerator attr summed over the listed slots, denominator attr from one slot
+const SYSTEMS = [
+  {key:'mass',   label:'Mass',       num:'Mass',        numFrom:ORDER,                          den:'Integrity',        denFrom:'chassis'},
+  {key:'cool',   label:'Cooling',    num:'Heat',        numFrom:['engine','booster','core'],    den:'Cooling',          denFrom:'cooling'},
+  {key:'stab',   label:'Stabilizer', num:'Fluctuation', numFrom:['engine','booster','cooling'], den:'Stabilization',    denFrom:'stabilizer'},
+  {key:'energy', label:'Energy',     num:'Energy Drain',numFrom:['engine','booster','stabilizer'],den:'Power Generation',denFrom:'core'},
+];
+const qualOf = p => p>=100?'green':p>=80?'blue':p>=60?'yellow':p>=40?'orange':'red';
+
+/* ---------- state + persistence ---------- */
+const KEY='swgr-vehicle-tinker-v1';
+let state = {parts:[], target:80, custom:90, base:{}, slots:{}};
+let storageMode='memory';
+function load(){
+  try{ const s=localStorage.getItem(KEY); storageMode='local'; if(s) Object.assign(state, JSON.parse(s)); }catch(e){ storageMode='memory'; }
+  document.getElementById('storage-note').textContent = storageMode==='local' ? 'Stash saved in this browser' : 'Stash kept in memory only (open the file locally to save it)';
+}
+function save(){ try{ if(storageMode==='local') localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+const uid = () => Math.random().toString(36).slice(2,9);
+let toastT; function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),1800); }
+
+/* ---------- helpers ---------- */
+const fmt = n => (n==null||isNaN(n)) ? '—' : (Math.round(n*10)/10).toString();
+function attrCell(name, pct, raw, editable, onEdit){
+  const q = pct==null ? '' : qualOf(pct);
+  const wrap=document.createDocumentFragment();
+  const n=document.createElement('span'); n.className='an'; n.textContent=name; wrap.appendChild(n);
+  const b=document.createElement('div'); b.className='bar '+q; const i=document.createElement('i'); i.style.width=Math.max(0,Math.min(100,(pct||0)/125*100))+'%'; b.appendChild(i); wrap.appendChild(b);
+  if(editable){
+    const p=document.createElement('input'); p.type='number'; p.step='0.1'; p.placeholder='%'; p.value=pct??''; p.className='q q-'+q; p.title='Quality %';
+    p.oninput=()=>{ onEdit('pct', p.value===''?null:+p.value); p.className='q q-'+(p.value===''?'':qualOf(+p.value)); };
+    const r=document.createElement('input'); r.type='number'; r.step='0.01'; r.placeholder='raw'; r.value=raw??''; r.title='Raw value'; r.className='araw';
+    r.oninput=()=>onEdit('raw', r.value===''?null:+r.value);
+    wrap.appendChild(p); wrap.appendChild(r);
+  }else{
+    const p=document.createElement('span'); p.className='q q-'+q; p.textContent=pct==null?'—':fmt(pct)+'%'; wrap.appendChild(p);
+    const r=document.createElement('span'); r.className='araw'; r.textContent=raw==null?'':fmt(raw); wrap.appendChild(r);
+  }
+  return wrap;
+}
+function renderAttrGrid(el, type, attrs, editable, onEdit){
+  el.innerHTML='';
+  TYPES[type].perf.forEach(a=>el.appendChild(attrCell(a, attrs[a]?.pct, attrs[a]?.raw, editable, (k,v)=>onEdit(a,k,v))));
+  const sep=document.createElement('div'); sep.className='perf-sep'; el.appendChild(sep);
+  TYPES[type].bal.forEach(a=>el.appendChild(attrCell(a, attrs[a]?.pct, attrs[a]?.raw, editable, (k,v)=>onEdit(a,k,v))));
+}
+function blankAttrs(type){ const o={}; attrsOf(type).forEach(a=>o[a]={pct:null,raw:null}); return o; }
+
+/* ---------- RE math ---------- */
+function reMax(parts, type){
+  const out={};
+  attrsOf(type).forEach(a=>{
+    let best=null;
+    parts.forEach(p=>{ const v=p.attrs[a]; if(v&&v.pct!=null&&(best==null||v.pct>best.pct)) best={pct:v.pct,raw:v.raw,from:p}; });
+    out[a]=best;
+  });
+  return out;
+}
+function dominated(p, others, type){
+  return others.some(o=>o.id!==p.id && attrsOf(type).every(a=>{
+    const pv=p.attrs[a]?.pct, ov=o.attrs[a]?.pct;
+    if(pv==null) return true; return ov!=null && ov>=pv;
+  }) && attrsOf(type).some(a=>{ const pv=p.attrs[a]?.pct, ov=o.attrs[a]?.pct; return ov!=null&&(pv==null||ov>pv); }));
+}
+// minimal subsets whose element-wise max meets threshold on every attribute
+function findCombos(parts, type, thr, maxResults=6){
+  const attrs=attrsOf(type);
+  const covers = parts.map(p=>attrs.map(a=>(p.attrs[a]?.pct??-1)>=thr));
+  const need = attrs.length;
+  const n=parts.length; const res=[];
+  for(let k=1;k<=Math.min(n,6)&&res.length===0;k++){
+    const idx=[]; 
+    (function rec(start,depth){
+      if(res.length>=maxResults) return;
+      if(depth===k){
+        const covered=new Array(need).fill(false);
+        idx.forEach(i=>covers[i].forEach((c,j)=>{ if(c) covered[j]=true; }));
+        if(covered.every(Boolean)) res.push(idx.map(i=>parts[i]));
+        return;
+      }
+      for(let i=start;i<n;i++){ idx.push(i); rec(i+1,depth+1); idx.pop(); }
+    })(0,0);
+  }
+  return res;
+}
+
+/* ---------- OCR text parsing ---------- */
+const ALIASES = {
+  'Accel Min':['accel min','acceleration min','min accel','min acceleration','accel minimum','acceleration minimum','minimum acceleration','accel (min)','acceleration (min)'],
+  'Accel Max':['accel max','acceleration max','max accel','max acceleration','accel maximum','acceleration maximum','maximum acceleration','accel (max)','acceleration (max)'],
+  'Decel':['decel','deceleration','decel rate','deceleration rate'],
+  'Power Generation':['power generation','power gen','power output','generation'],
+  'Energy Drain':['energy drain','power drain','drain'],
+  'Booster Duration':['booster duration','boost duration','duration'],
+  'Booster Cooldown':['booster cooldown','boost cooldown','cooldown'],
+  'Max Hitpoints':['max hitpoints','max hit points','hitpoints','hit points','max hp'],
+  'Turn Rate Max':['turn rate max','max turn rate','turn rate maximum','turning max'],
+  'Turn Rate':['turn rate','turning rate','turning'],
+  'Stabilization':['stabilization','stabilisation'],
+  'Fluctuation':['fluctuation'],
+  'Integrity':['integrity','structural integrity'],
+  'Maintenance':['maintenance'],
+  'Cooling':['cooling'],
+  'Speed':['speed'],
+  'Mass':['mass'],
+  'Heat':['heat','heat generation'],
+};
+// longest alias first so 'turn rate max' wins over 'turn rate', 'booster duration' over 'duration'
+const ALIAS_LIST = Object.entries(ALIASES).flatMap(([a,list])=>list.map(k=>({attr:a,key:k}))).sort((x,y)=>y.key.length-x.key.length);
+const norm = s => s.toLowerCase().replace(/[^a-z0-9%.\n()\/-]/g,' ');
+function parseText(text){
+  const found={}; const lines=text.split(/\n+/);
+  lines.forEach(line=>{
+    const l=norm(line);
+    for(const {attr:a,key} of ALIAS_LIST){
+      // tolerate OCR mangling: allow any non-letter between words
+      const re=new RegExp(key.replace(/[()]/g,'').replace(/ /g,'[^a-z0-9]*'));
+      const m=l.match(re);
+      if(!m) continue;
+      const rest=l.slice(m.index+m[0].length);
+      const nums=[...rest.matchAll(/(-?\d+(?:[.,]\d+)?)\s*(%)?/g)].map(x=>({v:+x[1].replace(',','.'), pct:!!x[2]}));
+      if(!nums.length) continue;
+      let pct=nums.find(x=>x.pct)?.v, raw=nums.find(x=>!x.pct)?.v;
+      if(pct==null && nums.length>=2){ pct=nums[0].v; raw=nums[1].v; }
+      else if(pct==null && nums.length===1){ if(nums[0].v<=125) pct=nums[0].v; else raw=nums[0].v; }
+      if(!found[a]) found[a]={pct:pct??null, raw:raw??null};
+      break;
+    }
+  });
+  // guess type: keywords in the window title first (engine/booster share attributes), then attribute overlap
+  const lt=text.toLowerCase();
+  const KW=[['core','energy core'],['cooling','cooling system'],['chassis','chassis'],['stabilizer','stabiliz'],['booster','booster'],['engine','engine']];
+  let bestT=null;
+  const header=lt.split('\n').slice(0,3).join(' ');
+  for(const [t,k] of KW){ if(header.includes(k)){ bestT=t; break; } }
+  if(!bestT){ let bestN=-1; ORDER.forEach(t=>{ const n=attrsOf(t).filter(a=>found[a]).length; if(n>bestN){bestN=n;bestT=t;} });
+    if(bestT==='engine' && lt.includes('booster') && !lt.includes('booster duration')) bestT='booster'; }
+  const count=attrsOf(bestT).filter(a=>found[a]&&found[a].pct!=null).length;
+  return {type:bestT, found, count};
+}
+
+/* ---------- capture ---------- */
+let stream=null, draft=null;
+const video=document.getElementById('video'), shot=document.getElementById('shot'), overlay=document.getElementById('overlay'), stage=document.getElementById('stage');
+let sourceEl=null; // video or img
+function showSource(el){
+  sourceEl=el; document.getElementById('stage-empty').hidden=true;
+  video.hidden = el!==video; shot.hidden = el!==shot; overlay.hidden=false;
+  document.getElementById('stage-hint').hidden=false;
+  document.getElementById('stage-hint').textContent = el===video ? 'Click the top-left of a component examine window. Drag to draw the box yourself.' : 'Click the top-left of the examine window in the screenshot, or drag a box.';
+  requestAnimationFrame(sizeOverlay);
+}
+function sizeOverlay(){
+  if(!sourceEl) return;
+  const w=sourceEl.clientWidth, h=sourceEl.clientHeight;
+  overlay.style.left=sourceEl.offsetLeft+'px'; overlay.style.top=sourceEl.offsetTop+'px';
+  overlay.style.width=w+'px'; overlay.style.height=h+'px'; overlay.width=w; overlay.height=h;
+}
+video.addEventListener('loadedmetadata',()=>{ sizeOverlay(); drawOverlay(); });
+video.addEventListener('resize',()=>{ sizeOverlay(); drawOverlay(); });
+new ResizeObserver(()=>{ sizeOverlay(); drawOverlay(); }).observe(stage);
+window.addEventListener('resize',sizeOverlay);
+document.getElementById('btn-share').onclick=async()=>{
+  try{
+    stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:5}, audio:false});
+    video.srcObject=stream; await video.play(); showSource(video);
+    document.getElementById('btn-stop').disabled=false;
+    stream.getVideoTracks()[0].addEventListener('ended',stopShare);
+  }catch(e){ toast(location.protocol==='file:'||location.protocol==='https:' ? 'Screen share was cancelled or blocked: '+e.message : 'Screen share needs the page opened as a local file or over https'); }
+};
+function stopShare(){ if(watching) stopWatch(); if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } video.srcObject=null; document.getElementById('btn-stop').disabled=true; if(sourceEl===video){ video.hidden=true; overlay.hidden=true; document.getElementById('stage-empty').hidden=false; sourceEl=null; } }
+document.getElementById('btn-stop').onclick=stopShare;
+function loadImageFile(file){ if(!file) return; const url=URL.createObjectURL(file); shot.onload=()=>{ showSource(shot); }; shot.src=url; }
+document.getElementById('file-shot').onchange=e=>loadImageFile(e.target.files[0]);
+document.addEventListener('paste',e=>{ const f=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/')); if(f){ loadImageFile(f.getAsFile()); toast('Screenshot pasted'); } });
+
+// drag / click on overlay
+let drag=null;
+overlay.addEventListener('pointerdown',e=>{ const r=overlay.getBoundingClientRect(); drag={x0:e.clientX-r.left,y0:e.clientY-r.top,x1:e.clientX-r.left,y1:e.clientY-r.top}; overlay.setPointerCapture(e.pointerId); });
+overlay.addEventListener('pointermove',e=>{ if(!drag) return; const r=overlay.getBoundingClientRect(); drag.x1=e.clientX-r.left; drag.y1=e.clientY-r.top; drawOverlay(); });
+let watchBox=null; // in source pixels
+overlay.addEventListener('pointerup',e=>{
+  if(!drag) return; const d=drag; drag=null;
+  const scaleX=srcW()/overlay.clientWidth, scaleY=srcH()/overlay.clientHeight;
+  let x=Math.min(d.x0,d.x1), y=Math.min(d.y0,d.y1), w=Math.abs(d.x1-d.x0), h=Math.abs(d.y1-d.y0);
+  if(w<12||h<12){ x=d.x0; y=d.y0; w=+document.getElementById('box-w').value/scaleX; h=+document.getElementById('box-h').value/scaleY; }
+  watchBox={x:Math.round(x*scaleX),y:Math.round(y*scaleY),w:Math.round(w*scaleX),h:Math.round(h*scaleY)};
+  drawOverlay();
+  document.getElementById('btn-watch').disabled=false; document.getElementById('btn-read-once').disabled=false;
+  if(!watching) setWatchStatus('Box set. Read it once to check the numbers, or start reading and go through your parts in-game.');
+});
+function srcW(){ return sourceEl===video ? video.videoWidth : shot.naturalWidth; }
+function srcH(){ return sourceEl===video ? video.videoHeight : shot.naturalHeight; }
+function drawOverlay(){
+  const c=overlay.getContext('2d'); c.clearRect(0,0,overlay.width,overlay.height);
+  let b=drag&&{x:Math.min(drag.x0,drag.x1),y:Math.min(drag.y0,drag.y1),w:Math.abs(drag.x1-drag.x0),h:Math.abs(drag.y1-drag.y0)};
+  if(!b && watchBox && srcW()){ const sx=overlay.clientWidth/srcW(), sy=overlay.clientHeight/srcH(); b={x:watchBox.x*sx,y:watchBox.y*sy,w:watchBox.w*sx,h:watchBox.h*sy}; }
+  if(!b) return; c.strokeStyle=watching?'#5ad07a':'#7cc4ff'; c.lineWidth=2; c.strokeRect(b.x,b.y,b.w,b.h); c.fillStyle=watching?'rgba(90,208,122,.10)':'rgba(124,196,255,.12)'; c.fillRect(b.x,b.y,b.w,b.h);
+}
+window.addEventListener('resize',()=>{ sizeOverlay(); drawOverlay(); });
+
+/* ---------- watch loop ---------- */
+let watching=false, watchCount=0, lastSig=null, pendingSig=null, ocrBusy=false, lastOcrMs=0;
+const setWatchStatus=s=>document.getElementById('watch-status').textContent=s;
+function sigOf(type, attrs){ return type+'|'+attrsOf(type).map(a=>attrs[a]?.pct==null?'':Math.round(attrs[a].pct*10)).join(','); }
+function stashHasSig(sig){ return state.parts.some(p=>sigOf(p.type,p.attrs)===sig); }
+let audioCtx=null;
+function beep(){ if(!document.getElementById('watch-beep').checked) return; try{ audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.frequency.value=880; g.gain.value=0.08; o.connect(g); g.connect(audioCtx.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.18); o.stop(audioCtx.currentTime+0.2); }catch(e){} }
+function logCapture(msg, ok){ const el=document.getElementById('watch-log'); const d=document.createElement('div'); d.className=ok?'':'dim'; d.innerHTML='<small>'+esc(msg)+'</small>'; el.prepend(d); while(el.children.length>8) el.lastChild.remove(); }
+document.getElementById('btn-watch').onclick=()=>{ if(watching) stopWatch(); else startWatch(); };
+document.getElementById('btn-read-once').onclick=async()=>{ if(!watchBox||!sourceEl) return; const r=await ocrBox(); if(r){ document.getElementById('ocr-raw').value=r.text; applyParse(r.text); document.getElementById('ocr-card').hidden=false; setStatus('Done — check the numbers'); } };
+function startWatch(){
+  if(!watchBox||!sourceEl) return;
+  watching=true; lastSig=null; pendingSig=null; watchCount=0; prevGray=null; lastOcrGray=null; stableTicks=0; lastOcrAt=0;
+  document.getElementById('btn-watch').textContent='Stop reading'; document.getElementById('btn-watch').classList.remove('primary');
+  beep(); // also unlocks audio while the user is still on this window
+  setWatchStatus('Reading… switch to the game and open each component. New parts are added automatically.');
+  drawOverlay(); watchLoop();
+}
+function stopWatch(){
+  watching=false; document.getElementById('btn-watch').textContent='Start reading'; document.getElementById('btn-watch').classList.add('primary');
+  setWatchStatus(`Stopped. ${watchCount} part${watchCount===1?'':'s'} captured this session.`); document.title='Scrapyard — SWG Restoration'; drawOverlay();
+}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+// cheap change detector: downsampled grayscale, compared with a tolerance so capture noise doesn't count as change
+const probe=document.createElement('canvas'); probe.width=64; probe.height=48;
+function boxGray(){
+  const c=probe.getContext('2d',{willReadFrequently:true}); c.drawImage(sourceEl,watchBox.x,watchBox.y,watchBox.w,watchBox.h,0,0,64,48);
+  const d=c.getImageData(0,0,64,48).data, g=new Uint8Array(64*48);
+  for(let i=0,j=0;i<d.length;i+=4,j++) g[j]=(d[i]*77+d[i+1]*150+d[i+2]*29)>>8;
+  return g;
+}
+function grayDiff(a,b){ if(!a||!b) return 255; let s=0; for(let i=0;i<a.length;i++) s+=Math.abs(a[i]-b[i]); return s/a.length; }
+const CHANGE_THRESHOLD=4; // mean gray difference (0-255) that counts as "the window changed"
+let prevGray=null, lastOcrGray=null, stableTicks=0, lastOcrAt=0;
+async function watchLoop(){
+  while(watching){
+    try{
+      if(!(sourceEl===video && (video.readyState<2||video.videoWidth===0))){
+        const g=boxGray();
+        const moved=grayDiff(g,prevGray)>CHANGE_THRESHOLD; prevGray=g;
+        stableTicks=moved?0:stableTicks+1;
+        const differsFromLastRead=grayDiff(g,lastOcrGray)>CHANGE_THRESHOLD;
+        const overdue=Date.now()-lastOcrAt>4000;           // safety net: never go more than 4 s without a read
+        if((stableTicks>=1 && differsFromLastRead) || overdue){ lastOcrGray=g; lastOcrAt=Date.now(); await watchTick(); }
+      }
+    }catch(e){ logCapture('Read error: '+e.message,false); }
+    await sleep(Math.max(150, +document.getElementById('watch-interval').value*1000));
+  }
+}
+async function watchTick(){
+  if(sourceEl===video && (video.readyState<2||video.videoWidth===0)) return;
+  const r=await ocrBox(); if(!r) return;
+  let {type,found,count}=parseText(r.text);
+  document.getElementById('watch-raw').value=r.text;
+  document.getElementById('watch-debug').innerHTML='<small>OCR '+lastOcrMs+' ms on '+nWorkers+' worker'+(nWorkers===1?'':'s')+' · Detected: <b>'+TYPES[type].label+'</b> · values found: '+count+'/'+attrsOf(type).length+' · '+attrsOf(type).map(a=>a+'='+(found[a]&&found[a].pct!=null?fmt(found[a].pct)+'%':'<span class="bad">?</span>')).join(', ')+'</small>';
+  const forced=document.getElementById('watch-type').value; if(forced){ type=forced; count=attrsOf(type).filter(a=>found[a]&&found[a].pct!=null).length; }
+  const need=Math.ceil(attrsOf(type).length*0.75);
+  if(count<need){ pendingSig=null;
+    const missing=attrsOf(type).filter(a=>!(found[a]&&found[a].pct!=null));
+    const tail=attrsOf(type).slice(-missing.length).every(a=>missing.includes(a)); // only the last rows missing → probably cut off
+    setWatchStatus(`Reading… (saw ${count}/${attrsOf(type).length} ${TYPES[type].label} values${tail?' — the bottom rows are missing, try a taller box':''}) · ${watchCount} captured`); return; }
+  const attrs=blankAttrs(type); Object.entries(found).forEach(([a,v])=>{ if(attrs[a]) attrs[a]=v; });
+  const sig=sigOf(type,attrs);
+  if(sig===lastSig){ setWatchStatus(`Same part still open · ${watchCount} captured`); return; }
+  if(stashHasSig(sig)){ lastSig=sig; logCapture(`${TYPES[type].label} skipped — already in stash`,false); return; }
+  const n=state.parts.filter(x=>x.type===type).length+1; const name=`${TYPES[type].label} ${n}`;
+  state.parts.push({id:uid(), type, name, attrs, cand:document.getElementById('watch-cand').checked, on:true, src:'ocr'});
+  save(); renderAll(); lastSig=sig; watchCount++; beep();
+  const summary=attrsOf(type).map(a=>attrs[a].pct==null?'—':fmt(attrs[a].pct)+'%').join(' / ');
+  logCapture(`Added ${name}: ${summary}`,true);
+  setWatchStatus(`Added ${name} · ${watchCount} captured`); document.title=`(${watchCount}) Scrapyard`;
+}
+async function ocrBox(){
+  if(ocrBusy) return null; ocrBusy=true;
+  try{ return await runOCR(watchBox.x,watchBox.y,watchBox.w,watchBox.h,true); }
+  finally{ ocrBusy=false; }
+}
+
+let sched=null, nWorkers=0;
+async function loadTesseractLib(){
+  if(window.Tesseract) return;
+  await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js'; s.onload=res; s.onerror=()=>{ const s2=document.createElement('script'); s2.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'; s2.onload=res; s2.onerror=rej; document.head.appendChild(s2); }; document.head.appendChild(s); });
+}
+async function getScheduler(){
+  if(sched) return sched;
+  setStatus('Loading OCR engine (first time only)…');
+  await loadTesseractLib();
+  nWorkers=Math.max(1,Math.min(4,(navigator.hardwareConcurrency||2)-1));
+  const sc=Tesseract.createScheduler();
+  const mk=async()=>{ const w=await Tesseract.createWorker('eng',1); await w.setParameters({tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789%.:()/- ', preserve_interword_spaces:'1'}); sc.addWorker(w); };
+  await Promise.all(Array.from({length:nWorkers},mk));
+  sched=sc; return sched;
+}
+// split a processed (grayscale) canvas into horizontal chunks at blank rows, so lines are never cut
+function splitRows(canvas, parts){
+  const ctx=canvas.getContext('2d'), W=canvas.width, H=canvas.height;
+  const d=ctx.getImageData(0,0,W,H).data;
+  const dark=new Float32Array(H); // fraction of "ink" per row (text is dark after processing when Invert is right)
+  for(let y=0;y<H;y++){ let n=0; for(let x=0;x<W;x+=2){ if(d[(y*W+x)*4]<110) n++; } dark[y]=n/(W/2); }
+  const blank=y=>dark[y]<0.01;
+  // candidate cut points: middle of blank runs
+  const cuts=[]; let runStart=-1;
+  for(let y=0;y<=H;y++){ const b=y<H&&blank(y); if(b&&runStart<0) runStart=y; if(!b&&runStart>=0){ if(y-runStart>=3) cuts.push((runStart+y)>>1); runStart=-1; } }
+  if(parts<=1||cuts.length===0) return [{y:0,h:H}];
+  // pick cuts closest to even divisions
+  const chosen=[]; for(let i=1;i<parts;i++){ const target=H*i/parts; let best=null; cuts.forEach(c=>{ if(best==null||Math.abs(c-target)<Math.abs(best-target)) best=c; }); if(best!=null&&!chosen.includes(best)) chosen.push(best); }
+  chosen.sort((a,b)=>a-b);
+  const out=[]; let y0=0; chosen.forEach(c=>{ if(c-y0>20){ out.push({y:y0,h:c-y0}); y0=c; } }); out.push({y:y0,h:H-y0});
+  return out;
+}
+async function recognizeFast(canvas){
+  const sc=await getScheduler();
+  const chunks=splitRows(canvas, nWorkers);
+  const jobs=chunks.map(ch=>{ const c=document.createElement('canvas'); c.width=canvas.width; c.height=ch.h; c.getContext('2d').drawImage(canvas,0,ch.y,canvas.width,ch.h,0,0,canvas.width,ch.h); return sc.addJob('recognize', c, {}, {text:true, blocks:false, hocr:false, tsv:false}); });
+  const results=await Promise.all(jobs);
+  return results.map(r=>r.data.text.trim()).join('\n');
+}
+const setStatus=s=>document.getElementById('ocr-status').textContent=s;
+async function runOCR(x,y,w,h,quiet){
+  const scale=+document.getElementById('opt-scale').value, invert=document.getElementById('opt-invert').checked;
+  const crop=document.getElementById('crop'); crop.width=w*scale; crop.height=h*scale;
+  const ctx=crop.getContext('2d'); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+  ctx.drawImage(sourceEl,x,y,w,h,0,0,w*scale,h*scale);
+  // grayscale + contrast stretch (+ optional invert) — Tesseract likes dark text on light bg
+  const img=ctx.getImageData(0,0,crop.width,crop.height), d=img.data;
+  let lo=255,hi=0; for(let i=0;i<d.length;i+=4){ const g=d[i]*.3+d[i+1]*.59+d[i+2]*.11; if(g<lo)lo=g; if(g>hi)hi=g; }
+  const rng=Math.max(1,hi-lo);
+  for(let i=0;i<d.length;i+=4){ let g=(d[i]*.3+d[i+1]*.59+d[i+2]*.11-lo)/rng*255; if(invert) g=255-g; d[i]=d[i+1]=d[i+2]=g; }
+  ctx.putImageData(img,0,0);
+  crop.style.maxHeight='220px';
+  try{
+    if(!quiet) setStatus('Reading…');
+    const t0=performance.now();
+    const text=await recognizeFast(crop);
+    if(quiet){ const wc=document.getElementById('watch-crop'); wc.width=crop.width; wc.height=crop.height; wc.getContext('2d').drawImage(crop,0,0); lastOcrMs=Math.round(performance.now()-t0); }
+    return {text};
+  }catch(e){ if(!quiet){ setStatus('OCR failed: '+e.message+'. You can still type the numbers by hand.'); applyParse(''); } else logCapture('OCR failed: '+e.message,false); return null; }
+}
+function applyParse(text){
+  const {type,found}=parseText(text);
+  draft={type, attrs:blankAttrs(type)};
+  Object.entries(found).forEach(([a,v])=>{ if(draft.attrs[a]) draft.attrs[a]=v; });
+  document.getElementById('draft-type').value=type;
+  renderDraft();
+}
+function renderDraft(){
+  renderAttrGrid(document.getElementById('draft-attrs'), draft.type, draft.attrs, true, (a,k,v)=>{ draft.attrs[a][k]=v; });
+}
+document.getElementById('btn-reparse').onclick=()=>applyParse(document.getElementById('ocr-raw').value);
+document.getElementById('draft-type').onchange=e=>{ const t=e.target.value; const old=draft.attrs; draft={type:t,attrs:blankAttrs(t)}; Object.keys(draft.attrs).forEach(a=>{ if(old[a]) draft.attrs[a]=old[a]; }); renderDraft(); };
+document.getElementById('btn-save-draft').onclick=()=>{
+  if(!draft) return;
+  addPart({type:draft.type, name:document.getElementById('draft-name').value.trim(), attrs:draft.attrs, cand:document.getElementById('draft-cand').checked, src:'ocr'});
+  document.getElementById('draft-name').value='';
+};
+
+/* manual entry */
+let man={type:'engine',attrs:blankAttrs('engine')};
+function renderMan(){ renderAttrGrid(document.getElementById('man-attrs'), man.type, man.attrs, true, (a,k,v)=>{ man.attrs[a][k]=v; }); }
+document.getElementById('man-type').onchange=e=>{ man={type:e.target.value,attrs:blankAttrs(e.target.value)}; renderMan(); };
+document.getElementById('btn-save-man').onclick=()=>{
+  addPart({type:man.type, name:document.getElementById('man-name').value.trim(), attrs:man.attrs, cand:document.getElementById('man-cand').checked, src:'manual'});
+  man={type:man.type,attrs:blankAttrs(man.type)}; renderMan(); document.getElementById('man-name').value='';
+};
+function addPart(p){
+  const hasAny=Object.values(p.attrs).some(v=>v.pct!=null);
+  if(!hasAny){ toast('Enter at least one quality % first'); return; }
+  const n=state.parts.filter(x=>x.type===p.type).length+1;
+  state.parts.push({id:uid(), type:p.type, name:p.name||`${TYPES[p.type].label} ${n}`, attrs:JSON.parse(JSON.stringify(p.attrs)), cand:!!p.cand, on:true});
+  save(); renderAll(); toast('Added to stash');
+}
+
+/* ---------- stash render ---------- */
+function renderStash(){
+  const el=document.getElementById('stash'); el.innerHTML='';
+  if(!state.parts.length){ el.innerHTML='<p class="dim">Nothing here yet. Read a part from the game or add one by hand on the left.</p>'; return; }
+  ORDER.forEach(t=>{
+    const parts=state.parts.filter(p=>p.type===t); if(!parts.length) return;
+    const blk=document.createElement('div'); blk.className='type-block';
+    blk.innerHTML=`<div class="type-head"><h2>${TYPES[t].label}</h2><span class="count">${parts.length}</span></div>`;
+    const active=parts.filter(p=>p.on);
+    parts.forEach(p=>{
+      const dom=p.on && dominated(p, active, t);
+      const d=document.createElement('div'); d.className='part'+(p.on?'':' excluded')+(dom?' dominated':'');
+      const head=document.createElement('div'); head.className='part-head';
+      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=p.on; cb.title='Include in calculations'; cb.onchange=()=>{ p.on=cb.checked; save(); renderAll(); };
+      const name=document.createElement('input'); name.className='name'; name.value=p.name; name.onchange=()=>{ p.name=name.value; save(); renderAll(); };
+      head.append(cb,name);
+      if(p.cand){ const tg=document.createElement('span'); tg.className='tag cand'; tg.textContent='not owned'; tg.title='Click to mark as owned'; tg.style.cursor='pointer'; tg.onclick=()=>{p.cand=false;save();renderAll();}; head.appendChild(tg); }
+      else { const tg=document.createElement('button'); tg.className='btn small ghost'; tg.textContent='owned'; tg.title='Click to mark as bazaar candidate'; tg.onclick=()=>{p.cand=true;save();renderAll();}; head.appendChild(tg); }
+      if(dom){ const tg=document.createElement('span'); tg.className='tag dom'; tg.textContent='adds nothing'; head.appendChild(tg); }
+      const del=document.createElement('button'); del.className='btn small ghost danger'; del.textContent='Remove'; del.onclick=()=>{ state.parts=state.parts.filter(x=>x.id!==p.id); save(); renderAll(); };
+      head.appendChild(del);
+      d.appendChild(head);
+      const grid=document.createElement('div'); grid.className='attrs';
+      renderAttrGrid(grid, t, p.attrs, true, (a,k,v)=>{ p.attrs[a][k]=v; save(); renderResultsDebounced(); });
+      d.appendChild(grid);
+      blk.appendChild(d);
+    });
+    el.appendChild(blk);
+  });
+}
+
+/* ---------- results render ---------- */
+function currentThr(){ return state.target==='custom' ? +state.custom : +state.target; }
+function renderResults(){
+  const el=document.getElementById('results'); el.innerHTML='';
+  const thr=currentThr();
+  let any=false;
+  ORDER.forEach(t=>{
+    const parts=state.parts.filter(p=>p.type===t&&p.on); if(!parts.length) return; any=true;
+    const card=document.createElement('div'); card.className='card';
+    const owned=parts.filter(p=>!p.cand);
+    const all=reMax(parts,t), ownedRe=owned.length?reMax(owned,t):null;
+    let html=`<h2>${TYPES[t].label}</h2><h3>If you RE everything you own${owned.length?'':' (nothing owned yet)'}</h3>`;
+    const grid=document.createElement('div'); grid.className='result-grid';
+    attrsOf(t).forEach(a=>{
+      const v=(ownedRe||all)[a];
+      const sp=document.createElement('span'); sp.className='an'; sp.textContent=a;
+      const b=document.createElement('div'); b.className='bar '+(v?qualOf(v.pct):''); const i=document.createElement('i'); i.style.width=(v?Math.min(100,v.pct/125*100):0)+'%'; b.appendChild(i);
+      const q=document.createElement('span'); q.className='q '+(v?'q-'+qualOf(v.pct):'dim'); q.textContent=v?fmt(v.pct)+'%':'—'; q.title=v?'from '+v.from.name:'';
+      grid.append(sp,b,q);
+    });
+    const combos=findCombos(parts,t,thr);
+    const label = thr>=100?'all green':thr>=80?'all blue':thr+'%+';
+    let comboHtml=`<h3>Fewest parts to reach ${label}</h3>`;
+    if(combos.length){
+      const k=combos[0].length;
+      comboHtml+=`<p class="muted"><small>${k} part${k>1?'s':''} → ${k-1} modulator${k-1===1?'':'s'}. ${combos.length>1?combos.length+' ways to do it:':''}</small></p>`;
+      combos.forEach(c=>{
+        const buy=c.filter(p=>p.cand).length;
+        comboHtml+=`<div class="combo"><small class="muted">${buy?`buy ${buy}, `:''}RE ${c.length===1?'nothing — this part already qualifies':`these ${c.length} together`}</small><div class="parts">${c.map(p=>`<span class="chip${p.cand?' cand':''}">${esc(p.name)}</span>`).join('')}</div></div>`;
+      });
+    }else{
+      const short=attrsOf(t).filter(a=>!all[a]||all[a].pct<thr).map(a=>`${a} (best you have: ${all[a]?fmt(all[a].pct)+'%':'none'})`);
+      comboHtml+=`<p class="shortfall">Not reachable with this stash. Still need ${label} on: ${short.join(', ')}.</p>`;
+    }
+    card.innerHTML=html; card.appendChild(grid); const cw=document.createElement('div'); cw.innerHTML=comboHtml; card.appendChild(cw);
+    el.appendChild(card);
+  });
+  if(!any) el.innerHTML='<p class="dim">Add parts to see what you can build.</p>';
+  renderShopping(thr);
+  renderBalance();
+}
+function renderShopping(thr){
+  const el=document.getElementById('shopping');
+  const label=thr>=100?'green':thr>=80?'blue':thr+'%+';
+  let html=`<h2>Shopping list</h2><p class="muted"><small>What you still need to buy or loot, per component, to reach ${label} on every attribute using only parts you own.</small></p>`;
+  let anyNeed=false, anyOwned=false;
+  ORDER.forEach(t=>{
+    const owned=state.parts.filter(p=>p.type===t&&p.on&&!p.cand);
+    const cands=state.parts.filter(p=>p.type===t&&p.on&&p.cand);
+    const cur=owned.length?reMax(owned,t):{};
+    const missing=attrsOf(t).filter(a=>!cur[a]||cur[a].pct<thr);
+    if(owned.length) anyOwned=true;
+    if(!missing.length){ html+=`<div class="combo"><b>${TYPES[t].label}</b> <span class="ok">done</span></div>`; return; }
+    anyNeed=true;
+    const items=missing.map(a=>`<span class="chip">${a} <span class="q q-${qualOf(thr)}">${label}</span>${cur[a]?` <span class="dim">(have ${fmt(cur[a].pct)}%)</span>`:''}</span>`).join('');
+    // which flagged bazaar candidates already cover some of the gaps
+    const covered=cands.map(c=>({c,covers:missing.filter(a=>(c.attrs[a]?.pct??-1)>=thr)})).filter(x=>x.covers.length);
+    const perfMissing=missing.filter(a=>TYPES[t].perf.includes(a));
+    html+=`<div class="combo"><b>${TYPES[t].label}</b>${owned.length?'':' <span class="dim">— you own none</span>'}
+      <div class="parts" style="margin-top:6px">${items}</div>
+      <p class="dim" style="margin:6px 0 0"><small>${missing.length===1?'Any '+TYPES[t].label.toLowerCase()+' with this attribute at '+label+' finishes it.':'One part with all of these at '+label+', or several parts covering them between them. '+(perfMissing.length&&perfMissing.length<missing.length?'Performance gaps ('+perfMissing.join(', ')+') affect how the vehicle drives; the rest only matter for balancing.':'')}</small></p>
+      ${covered.length?`<p style="margin:6px 0 0"><small class="muted">Already flagged on the bazaar: ${covered.map(x=>`<span class="chip cand">${esc(x.c.name)} → ${x.covers.join(', ')}</span>`).join(' ')}</small></p>`:''}
+    </div>`;
+  });
+  if(!anyOwned && !state.parts.length) html+='<p class="dim">Add the parts you own and this fills in.</p>';
+  else if(!anyNeed) html+=`<p class="ok">Nothing to buy — every slot can reach ${label} from what you own.</p>`;
+  el.innerHTML=html;
+}
+let rt; function renderResultsDebounced(){ clearTimeout(rt); rt=setTimeout(renderResults,250); }
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- balance ---------- */
+function renderBalanceBase(){
+  const el=document.getElementById('balance-base'); el.innerHTML='<span class="dim"><small>System</small></span><span class="dim"><small>Base A</small></span><span class="dim"><small>Base B</small></span><span></span>';
+  SYSTEMS.forEach(s=>{
+    const b=state.base[s.key]||(state.base[s.key]={a:0,b:0});
+    const l=document.createElement('span'); l.className='sys'; l.textContent=s.label;
+    const ia=document.createElement('input'); ia.type='number'; ia.step='0.01'; ia.value=b.a; ia.oninput=()=>{b.a=+ia.value||0;save();renderBalance();};
+    const ib=document.createElement('input'); ib.type='number'; ib.step='0.01'; ib.value=b.b; ib.oninput=()=>{b.b=+ib.value||0;save();renderBalance();};
+    const note=document.createElement('span'); note.className='dim'; note.innerHTML=`<small>${s.num} / ${s.den}</small>`;
+    el.append(l,ia,ib,note);
+  });
+}
+function renderSlots(){
+  const el=document.getElementById('slots'); el.innerHTML='';
+  ORDER.forEach(t=>{
+    const row=document.createElement('div'); row.className='row';
+    const l=document.createElement('span'); l.style.width='120px'; l.textContent=TYPES[t].label;
+    const sel=document.createElement('select'); sel.style.width='auto'; sel.style.flex='1';
+    const parts=state.parts.filter(p=>p.type===t&&p.on);
+    sel.innerHTML=`<option value="">— empty —</option><option value="__re__">RE result of everything owned</option>`+parts.map(p=>`<option value="${p.id}">${esc(p.name)}${p.cand?' (not owned)':''}</option>`).join('');
+    sel.value=state.slots[t]||''; if(sel.value!==(state.slots[t]||'')) state.slots[t]='';
+    sel.onchange=()=>{ state.slots[t]=sel.value; save(); renderBalance(); };
+    row.append(l,sel); el.appendChild(row);
+  });
+}
+function slotAttrs(t){
+  const v=state.slots[t]; if(!v) return null;
+  if(v==='__re__'){ const owned=state.parts.filter(p=>p.type===t&&p.on&&!p.cand); return owned.length?reMax(owned,t):null; }
+  const p=state.parts.find(x=>x.id===v); return p?Object.fromEntries(Object.entries(p.attrs).map(([a,x])=>[a,x.pct==null?null:x])):null;
+}
+function renderBalance(){
+  const el=document.getElementById('balance-out'); el.innerHTML='<span class="dim"><small>System</small></span><span class="dim"><small>A</small></span><span class="dim"><small>B</small></span><span></span>';
+  const installed={}; ORDER.forEach(t=>installed[t]=slotAttrs(t));
+  let missingRaw=false;
+  SYSTEMS.forEach(s=>{
+    const b=state.base[s.key]||{a:0,b:0};
+    let A=b.a, B=b.b;
+    s.numFrom.forEach(t=>{ const v=installed[t]?.[s.num]; if(v){ if(v.raw==null) missingRaw=true; else A+=v.raw; } });
+    const dv=installed[s.denFrom]?.[s.den]; if(dv){ if(dv.raw==null) missingRaw=true; else B+=dv.raw; }
+    const ok=A<=B;
+    const l=document.createElement('span'); l.className='sys'; l.textContent=s.label;
+    const a=document.createElement('span'); a.textContent=fmt(A);
+    const bb=document.createElement('span'); bb.textContent=fmt(B);
+    const st=document.createElement('span'); st.className=ok?'ok':'bad'; st.textContent=ok?'balanced':'out of balance (-25%)';
+    el.append(l,a,bb,st);
+  });
+  if(missingRaw){ const n=document.createElement('div'); n.className='dim'; n.style.gridColumn='1/-1'; n.innerHTML='<small>Some installed parts have no raw values entered, so these sums are incomplete.</small>'; el.appendChild(n); }
+}
+
+/* ---------- target control ---------- */
+document.querySelectorAll('#target-seg button').forEach(b=>b.onclick=()=>{
+  state.target=b.dataset.t==='custom'?'custom':+b.dataset.t; save();
+  document.querySelectorAll('#target-seg button').forEach(x=>x.classList.toggle('on',x===b));
+  document.getElementById('target-custom').hidden=state.target!=='custom';
+  renderResults();
+});
+document.getElementById('target-custom').oninput=e=>{ state.custom=+e.target.value||0; save(); renderResults(); };
+
+/* ---------- export / import ---------- */
+document.getElementById('btn-export').onclick=()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json'})); a.download='scrapyard-stash.json'; a.click(); };
+document.getElementById('file-import').onchange=async e=>{ try{ const j=JSON.parse(await e.target.files[0].text()); if(Array.isArray(j.parts)){ Object.assign(state,j); save(); renderAll(); toast('Stash imported'); } }catch(err){ toast('That file is not a stash export'); } };
+
+/* ---------- init ---------- */
+function renderAll(){ renderStash(); renderSlots(); renderResults(); }
+(function init(){
+  load();
+  ['draft-type','man-type'].forEach(id=>{ document.getElementById(id).innerHTML=ORDER.map(t=>`<option value="${t}">${TYPES[t].label}</option>`).join(''); });
+  document.getElementById('watch-type').innerHTML+=ORDER.map(t=>`<option value="${t}">${TYPES[t].label}</option>`).join('');
+  document.querySelectorAll('#target-seg button').forEach(x=>x.classList.toggle('on',(x.dataset.t==='custom'?'custom':+x.dataset.t)===state.target));
+  document.getElementById('target-custom').hidden=state.target!=='custom'; document.getElementById('target-custom').value=state.custom;
+  renderMan(); renderBalanceBase(); renderAll();
+})();
+</script>
+</body>
+</html>

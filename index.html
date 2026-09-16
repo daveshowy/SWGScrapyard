@@ -75,6 +75,14 @@ label.inline{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
 .bar.red i{background:var(--q-red)} .bar.orange i{background:var(--q-orange)} .bar.yellow i{background:var(--q-yellow)} .bar.blue i{background:var(--q-blue)} .bar.green i{background:var(--q-green)}
 
 /* stash */
+.filterbar{position:sticky;top:-16px;background:var(--bg);padding:6px 0 8px;margin-bottom:6px;border-bottom:1px solid var(--line);z-index:2}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.chips button{background:transparent;border:1px solid var(--line-2);border-radius:12px;padding:2px 10px;font-size:12px;color:var(--ink-2);cursor:pointer}
+.chips button.on{background:var(--pane-2);color:var(--ink);border-color:#4a6078}
+.chips button .n{color:var(--ink-3);margin-left:4px}
+.type-head{cursor:pointer;user-select:none}
+.type-head .caret{color:var(--ink-3);font-size:11px;margin-left:auto}
+#stash-count{font-weight:400;font-size:12px;color:var(--ink-3)}
 .type-block{margin-bottom:14px}
 .type-head{display:flex;align-items:baseline;gap:8px;padding:6px 0;border-bottom:1px solid var(--line-2);margin-bottom:6px}
 .type-head h2{margin:0}
@@ -88,6 +96,8 @@ label.inline{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
 .tag{font-size:11px;padding:1px 6px;border-radius:10px;border:1px solid var(--line-2);color:var(--ink-2)}
 .tag.cand{border-color:#5a6f2a;color:#b7d16a}
 .tag.dom{border-color:var(--line-2);color:var(--ink-3)}
+.tag.warn{border-color:var(--q-orange);color:var(--q-orange)}
+.part.warn{border-color:#6a4a2a}
 .attrs{display:grid;grid-template-columns:auto 1fr auto auto;gap:3px 10px;align-items:center;margin-top:6px;font-size:13px}
 .attrs .an{color:var(--ink-2)} .attrs .araw{color:var(--ink-3);font-size:12px;text-align:right}
 .attrs input{width:64px;padding:2px 5px;text-align:right;background:transparent;border:1px solid transparent;border-radius:4px}
@@ -217,8 +227,17 @@ details summary{cursor:pointer;color:var(--ink-2)}
 <!-- ================= STASH ================= -->
 <section class="pane" id="pane-stash">
   <div class="row between" style="margin-bottom:6px">
-    <h2 style="margin:0">Stash</h2>
+    <h2 style="margin:0">Stash <span class="count" id="stash-count"></span></h2>
     <span class="dim"><small>Untick a part to leave it out of the calculations. Dashed parts add nothing over another part you have.</small></span>
+  </div>
+  <div class="filterbar">
+    <div class="chips" id="filter-type"></div>
+    <div class="row">
+      <input type="text" id="filter-text" placeholder="Search name…" style="flex:1;min-width:120px">
+      <select id="filter-own" style="width:auto"><option value="">Owned + not owned</option><option value="own">Owned only</option><option value="cand">Not owned only</option><option value="warn">Needs a check</option></select>
+      <select id="filter-sort" style="width:auto"></select>
+      <button class="btn small ghost" id="filter-dir" title="Reverse order">↓</button>
+    </div>
   </div>
   <div id="stash"></div>
 </section>
@@ -240,13 +259,12 @@ details summary{cursor:pointer;color:var(--ink-2)}
 
   <div class="card" style="margin-top:16px">
     <h2>Sub-system balance</h2>
-    <p class="muted"><small>Enter your vehicle's numbers from the datapad with no components installed, then pick which part fills each slot.</small></p>
-    <div class="balance" id="balance-base"></div>
+    <p class="muted"><small>Pick which part fills each slot and see whether each system balances. Balance depends only on the components, not the vehicle.</small></p>
     <h3>Slots</h3>
     <div class="stack" id="slots"></div>
     <h3>Result</h3>
     <div class="balance" id="balance-out"></div>
-    <div class="assume">Assumes the datapad's A/B is the sum of the six components' balancing raws (plus whatever the base vehicle contributes) and that a system is balanced when A ≤ B. If your datapad disagrees, adjust the base numbers until an all-stock vehicle matches, and tell me what you see.</div>
+    <div class="assume">A = the sum of the relevant balancing raws across your components; B = the matching raw on the one component that supplies it (chassis integrity, cooling, stabilization, power generation). Balanced when A ≤ B, per the swgr.org wiki.</div>
   </div>
 </section>
 </main>
@@ -275,10 +293,10 @@ const qualOf = p => p>=100?'green':p>=80?'blue':p>=60?'yellow':p>=40?'orange':'r
 
 /* ---------- state + persistence ---------- */
 const KEY='swgr-vehicle-tinker-v1';
-let state = {parts:[], target:80, custom:90, base:{}, slots:{}};
+let state = {parts:[], target:80, custom:90, base:{}, slots:{}, filter:{type:'',text:'',own:'',sort:'newest',dir:1,collapsed:{}}};
 let storageMode='memory';
 function load(){
-  try{ const s=localStorage.getItem(KEY); storageMode='local'; if(s) Object.assign(state, JSON.parse(s)); }catch(e){ storageMode='memory'; }
+  try{ const s=localStorage.getItem(KEY); storageMode='local'; if(s){ const j=JSON.parse(s); Object.assign(state, j); state.filter=Object.assign({type:'',text:'',own:'',sort:'newest',dir:1,collapsed:{}}, j.filter||{}); } }catch(e){ storageMode='memory'; }
   document.getElementById('storage-note').textContent = storageMode==='local' ? 'Stash saved in this browser' : 'Stash kept in memory only (open the file locally to save it)';
 }
 function save(){ try{ if(storageMode==='local') localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
@@ -351,6 +369,7 @@ function findCombos(parts, type, thr, maxResults=6){
 }
 
 /* ---------- OCR text parsing ---------- */
+const PCT_MAX=150; // quality % never exceeds this; anything bigger is a misread raw value
 const ALIASES = {
   'Accel Min':['accel min','acceleration min','min accel','min acceleration','accel minimum','acceleration minimum','minimum acceleration','accel (min)','acceleration (min)'],
   'Accel Max':['accel max','acceleration max','max accel','max acceleration','accel maximum','acceleration maximum','maximum acceleration','accel (max)','acceleration (max)'],
@@ -386,10 +405,11 @@ function parseText(text){
       const rest=l.slice(m.index+m[0].length);
       const nums=[...rest.matchAll(/(-?\d+(?:[.,]\d+)?)\s*(%)?/g)].map(x=>({v:+x[1].replace(',','.'), pct:!!x[2]}));
       if(!nums.length) continue;
-      let pct=nums.find(x=>x.pct)?.v, raw=nums.find(x=>!x.pct)?.v;
-      if(pct==null && nums.length>=2){ pct=nums[0].v; raw=nums[1].v; }
-      else if(pct==null && nums.length===1){ if(nums[0].v<=125) pct=nums[0].v; else raw=nums[0].v; }
-      if(!found[a]) found[a]={pct:pct??null, raw:raw??null};
+      const plausible=x=>x.v>=0&&x.v<=PCT_MAX;
+      let pct=nums.find(x=>x.pct&&plausible(x))?.v, raw=nums.find(x=>!x.pct)?.v;
+      if(pct==null){ const alt=nums.find(plausible); if(alt){ pct=alt.v; const other=nums.find(x=>x!==alt); raw=other?other.v:raw; } }
+      if(pct==null && nums.length){ raw=raw??nums[0].v; }
+      if(!found[a]) found[a]={pct:pct??null, raw:raw??null, bad:pct==null};
       break;
     }
   });
@@ -526,15 +546,17 @@ async function watchTick(){
     const missing=attrsOf(type).filter(a=>!(found[a]&&found[a].pct!=null));
     const tail=attrsOf(type).slice(-missing.length).every(a=>missing.includes(a)); // only the last rows missing → probably cut off
     setWatchStatus(`Reading… (saw ${count}/${attrsOf(type).length} ${TYPES[type].label} values${tail?' — the bottom rows are missing, try a taller box':''}) · ${watchCount} captured`); return; }
-  const attrs=blankAttrs(type); Object.entries(found).forEach(([a,v])=>{ if(attrs[a]) attrs[a]=v; });
+  const attrs=blankAttrs(type); Object.entries(found).forEach(([a,v])=>{ if(attrs[a]) attrs[a]={pct:v.pct,raw:v.raw}; });
+  const suspect=attrsOf(type).filter(a=>!found[a]||found[a].bad||found[a].pct==null);
   const sig=sigOf(type,attrs);
   if(sig===lastSig){ setWatchStatus(`Same part still open · ${watchCount} captured`); return; }
   if(stashHasSig(sig)){ lastSig=sig; logCapture(`${TYPES[type].label} skipped — already in stash`,false); return; }
   const n=state.parts.filter(x=>x.type===type).length+1; const name=`${TYPES[type].label} ${n}`;
-  state.parts.push({id:uid(), type, name, attrs, cand:document.getElementById('watch-cand').checked, on:true, src:'ocr'});
-  save(); renderAll(); lastSig=sig; watchCount++; beep();
-  const summary=attrsOf(type).map(a=>attrs[a].pct==null?'—':fmt(attrs[a].pct)+'%').join(' / ');
-  logCapture(`Added ${name}: ${summary}`,true);
+  const warn=suspect.length?`Check: ${suspect.join(', ')} misread or missing`:null;
+  state.parts.push({id:uid(), type, name, attrs, cand:document.getElementById('watch-cand').checked, on:true, src:'ocr', warn});
+  save(); renderAll(); lastSig=sig; watchCount++; beep(); if(warn) setTimeout(beep,220);
+  const summary=attrsOf(type).map(a=>attrs[a].pct==null?'?':fmt(attrs[a].pct)+'%').join(' / ');
+  logCapture(`Added ${name}${warn?' ⚠ needs a check':''}: ${summary}`,true);
   setWatchStatus(`Added ${name} · ${watchCount} captured`); document.title=`(${watchCount}) Scrapyard`;
 }
 async function ocrBox(){
@@ -632,33 +654,80 @@ document.getElementById('btn-save-man').onclick=()=>{
 function addPart(p){
   const hasAny=Object.values(p.attrs).some(v=>v.pct!=null);
   if(!hasAny){ toast('Enter at least one quality % first'); return; }
+  const bad=Object.entries(p.attrs).filter(([a,v])=>v.pct!=null&&(v.pct<0||v.pct>PCT_MAX)).map(([a])=>a);
+  if(bad.length){ toast(`${bad.join(', ')}: quality % must be 0–${PCT_MAX}`); return; }
   const n=state.parts.filter(x=>x.type===p.type).length+1;
   state.parts.push({id:uid(), type:p.type, name:p.name||`${TYPES[p.type].label} ${n}`, attrs:JSON.parse(JSON.stringify(p.attrs)), cand:!!p.cand, on:true});
   save(); renderAll(); toast('Added to stash');
 }
 
 /* ---------- stash render ---------- */
+const SORTS_BASE=[['newest','Newest first'],['name','Name'],['best','Best overall (avg %)'],['weakest','Weakest stat (min %)']];
+function sortOptionsFor(type){
+  const o=[...SORTS_BASE]; if(type) attrsOf(type).forEach(a=>o.push(['attr:'+a, a+' %'])); return o;
+}
+function avgPct(p){ const v=Object.values(p.attrs).map(x=>x.pct).filter(x=>x!=null); return v.length?v.reduce((a,b)=>a+b,0)/v.length:-1; }
+function minPct(p){ const v=Object.values(p.attrs).map(x=>x.pct).filter(x=>x!=null); return v.length?Math.min(...v):-1; }
+function sortParts(parts){
+  const f=state.filter, k=f.sort, dir=f.dir||1;
+  const idx=new Map(state.parts.map((p,i)=>[p.id,i]));
+  const cmp=(a,b)=>{
+    if(k==='newest') return idx.get(b.id)-idx.get(a.id);
+    if(k==='name') return a.name.localeCompare(b.name,undefined,{numeric:true});
+    if(k==='best') return avgPct(b)-avgPct(a);
+    if(k==='weakest') return minPct(b)-minPct(a);
+    if(k.startsWith('attr:')){ const at=k.slice(5); return ((b.attrs[at]?.pct)??-1)-((a.attrs[at]?.pct)??-1); }
+    return 0;
+  };
+  return parts.slice().sort((a,b)=>dir*cmp(a,b));
+}
+function renderFilterBar(){
+  const f=state.filter;
+  const counts={}; ORDER.forEach(t=>counts[t]=state.parts.filter(p=>p.type===t).length);
+  const chips=document.getElementById('filter-type');
+  chips.innerHTML=`<button data-t="" class="${f.type===''?'on':''}">All<span class="n">${state.parts.length}</span></button>`+
+    ORDER.map(t=>`<button data-t="${t}" class="${f.type===t?'on':''}">${TYPES[t].label}<span class="n">${counts[t]}</span></button>`).join('');
+  chips.querySelectorAll('button').forEach(b=>b.onclick=()=>{ f.type=b.dataset.t; if(f.sort.startsWith('attr:')&&(!f.type||!attrsOf(f.type).includes(f.sort.slice(5)))) f.sort='newest'; save(); renderStash(); });
+  const sel=document.getElementById('filter-sort');
+  sel.innerHTML=sortOptionsFor(f.type).map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  sel.value=f.sort;
+  document.getElementById('filter-own').value=f.own;
+  document.getElementById('filter-text').value=f.text;
+  document.getElementById('filter-dir').textContent=(f.dir||1)===1?'↓':'↑';
+}
 function renderStash(){
-  const el=document.getElementById('stash'); el.innerHTML='';
-  if(!state.parts.length){ el.innerHTML='<p class="dim">Nothing here yet. Read a part from the game or add one by hand on the left.</p>'; return; }
+  renderFilterBar();
+  const f=state.filter, el=document.getElementById('stash'); el.innerHTML='';
+  if(!state.parts.length){ el.innerHTML='<p class="dim">Nothing here yet. Read a part from the game or add one by hand on the left.</p>'; document.getElementById('stash-count').textContent=''; return; }
+  const q=f.text.trim().toLowerCase();
+  const visible=state.parts.filter(p=>(!f.type||p.type===f.type)&&(!f.own||(f.own==='own'?!p.cand:f.own==='cand'?p.cand:!!p.warn))&&(!q||p.name.toLowerCase().includes(q)));
+  document.getElementById('stash-count').textContent=visible.length===state.parts.length?`${state.parts.length}`:`${visible.length} of ${state.parts.length}`;
+  if(!visible.length){ el.innerHTML='<p class="dim">No parts match this filter.</p>'; return; }
   ORDER.forEach(t=>{
-    const parts=state.parts.filter(p=>p.type===t); if(!parts.length) return;
+    const parts=sortParts(visible.filter(p=>p.type===t)); if(!parts.length) return;
+    const collapsed=!!f.collapsed[t] && !f.type; // never collapse when a single type is selected
     const blk=document.createElement('div'); blk.className='type-block';
-    blk.innerHTML=`<div class="type-head"><h2>${TYPES[t].label}</h2><span class="count">${parts.length}</span></div>`;
-    const active=parts.filter(p=>p.on);
+    const head=document.createElement('div'); head.className='type-head';
+    head.innerHTML=`<h2>${TYPES[t].label}</h2><span class="count">${parts.length}</span><span class="caret">${collapsed?'show':'hide'}</span>`;
+    head.onclick=()=>{ f.collapsed[t]=!f.collapsed[t]; save(); renderStash(); };
+    blk.appendChild(head);
+    if(collapsed){ el.appendChild(blk); return; }
+    const active=state.parts.filter(p=>p.type===t&&p.on);
     parts.forEach(p=>{
       const dom=p.on && dominated(p, active, t);
-      const d=document.createElement('div'); d.className='part'+(p.on?'':' excluded')+(dom?' dominated':'');
-      const head=document.createElement('div'); head.className='part-head';
+      const d=document.createElement('div'); d.className='part'+(p.on?'':' excluded')+(dom?' dominated':'')+(p.warn?' warn':'');
+      const ph=document.createElement('div'); ph.className='part-head';
       const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=p.on; cb.title='Include in calculations'; cb.onchange=()=>{ p.on=cb.checked; save(); renderAll(); };
       const name=document.createElement('input'); name.className='name'; name.value=p.name; name.onchange=()=>{ p.name=name.value; save(); renderAll(); };
-      head.append(cb,name);
-      if(p.cand){ const tg=document.createElement('span'); tg.className='tag cand'; tg.textContent='not owned'; tg.title='Click to mark as owned'; tg.style.cursor='pointer'; tg.onclick=()=>{p.cand=false;save();renderAll();}; head.appendChild(tg); }
-      else { const tg=document.createElement('button'); tg.className='btn small ghost'; tg.textContent='owned'; tg.title='Click to mark as bazaar candidate'; tg.onclick=()=>{p.cand=true;save();renderAll();}; head.appendChild(tg); }
-      if(dom){ const tg=document.createElement('span'); tg.className='tag dom'; tg.textContent='adds nothing'; head.appendChild(tg); }
+      ph.append(cb,name);
+      if(p.cand){ const tg=document.createElement('span'); tg.className='tag cand'; tg.textContent='not owned'; tg.title='Click to mark as owned'; tg.style.cursor='pointer'; tg.onclick=()=>{p.cand=false;save();renderAll();}; ph.appendChild(tg); }
+      else { const tg=document.createElement('button'); tg.className='btn small ghost'; tg.textContent='owned'; tg.title='Click to mark as bazaar candidate'; tg.onclick=()=>{p.cand=true;save();renderAll();}; ph.appendChild(tg); }
+      if(p.warn){ const tg=document.createElement('span'); tg.className='tag warn'; tg.textContent='check values'; tg.title=p.warn+' — click to clear once corrected'; tg.style.cursor='pointer'; tg.onclick=()=>{ delete p.warn; save(); renderAll(); }; ph.appendChild(tg); }
+      if(dom){ const tg=document.createElement('span'); tg.className='tag dom'; tg.textContent='adds nothing'; ph.appendChild(tg); }
       const del=document.createElement('button'); del.className='btn small ghost danger'; del.textContent='Remove'; del.onclick=()=>{ state.parts=state.parts.filter(x=>x.id!==p.id); save(); renderAll(); };
-      head.appendChild(del);
-      d.appendChild(head);
+      ph.appendChild(del);
+      d.appendChild(ph);
+      if(p.warn){ const w=document.createElement('div'); w.className='shortfall'; w.style.margin='4px 0 0'; w.innerHTML='<small>'+esc(p.warn)+' — fix the number, then click the tag to clear.</small>'; d.appendChild(w); }
       const grid=document.createElement('div'); grid.className='attrs';
       renderAttrGrid(grid, t, p.attrs, true, (a,k,v)=>{ p.attrs[a][k]=v; save(); renderResultsDebounced(); });
       d.appendChild(grid);
@@ -667,6 +736,10 @@ function renderStash(){
     el.appendChild(blk);
   });
 }
+document.getElementById('filter-text').oninput=e=>{ state.filter.text=e.target.value; save(); renderStash(); };
+document.getElementById('filter-own').onchange=e=>{ state.filter.own=e.target.value; save(); renderStash(); };
+document.getElementById('filter-sort').onchange=e=>{ state.filter.sort=e.target.value; save(); renderStash(); };
+document.getElementById('filter-dir').onclick=()=>{ state.filter.dir=(state.filter.dir||1)*-1; save(); renderStash(); };
 
 /* ---------- results render ---------- */
 function currentThr(){ return state.target==='custom' ? +state.custom : +state.target; }
@@ -740,17 +813,6 @@ let rt; function renderResultsDebounced(){ clearTimeout(rt); rt=setTimeout(rende
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ---------- balance ---------- */
-function renderBalanceBase(){
-  const el=document.getElementById('balance-base'); el.innerHTML='<span class="dim"><small>System</small></span><span class="dim"><small>Base A</small></span><span class="dim"><small>Base B</small></span><span></span>';
-  SYSTEMS.forEach(s=>{
-    const b=state.base[s.key]||(state.base[s.key]={a:0,b:0});
-    const l=document.createElement('span'); l.className='sys'; l.textContent=s.label;
-    const ia=document.createElement('input'); ia.type='number'; ia.step='0.01'; ia.value=b.a; ia.oninput=()=>{b.a=+ia.value||0;save();renderBalance();};
-    const ib=document.createElement('input'); ib.type='number'; ib.step='0.01'; ib.value=b.b; ib.oninput=()=>{b.b=+ib.value||0;save();renderBalance();};
-    const note=document.createElement('span'); note.className='dim'; note.innerHTML=`<small>${s.num} / ${s.den}</small>`;
-    el.append(l,ia,ib,note);
-  });
-}
 function renderSlots(){
   const el=document.getElementById('slots'); el.innerHTML='';
   ORDER.forEach(t=>{
@@ -774,8 +836,7 @@ function renderBalance(){
   const installed={}; ORDER.forEach(t=>installed[t]=slotAttrs(t));
   let missingRaw=false;
   SYSTEMS.forEach(s=>{
-    const b=state.base[s.key]||{a:0,b:0};
-    let A=b.a, B=b.b;
+    let A=0, B=0;
     s.numFrom.forEach(t=>{ const v=installed[t]?.[s.num]; if(v){ if(v.raw==null) missingRaw=true; else A+=v.raw; } });
     const dv=installed[s.denFrom]?.[s.den]; if(dv){ if(dv.raw==null) missingRaw=true; else B+=dv.raw; }
     const ok=A<=B;
@@ -809,7 +870,7 @@ function renderAll(){ renderStash(); renderSlots(); renderResults(); }
   document.getElementById('watch-type').innerHTML+=ORDER.map(t=>`<option value="${t}">${TYPES[t].label}</option>`).join('');
   document.querySelectorAll('#target-seg button').forEach(x=>x.classList.toggle('on',(x.dataset.t==='custom'?'custom':+x.dataset.t)===state.target));
   document.getElementById('target-custom').hidden=state.target!=='custom'; document.getElementById('target-custom').value=state.custom;
-  renderMan(); renderBalanceBase(); renderAll();
+  renderMan(); renderAll();
 })();
 </script>
 </body>

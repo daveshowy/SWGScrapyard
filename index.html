@@ -810,6 +810,7 @@ function renderResults(){
   });
   if(!any) el.innerHTML='<p class="dim">Add parts to see what you can build.</p>';
   renderShopping(thr);
+  renderSlots();
   renderBalance();
 }
 function renderShopping(thr){
@@ -881,15 +882,32 @@ function renderSlots(){
     const l=document.createElement('span'); l.style.width='120px'; l.textContent=TYPES[t].label;
     const sel=document.createElement('select'); sel.style.width='auto'; sel.style.flex='1';
     const parts=state.parts.filter(p=>p.type===t&&p.on);
-    sel.innerHTML=`<option value="">— empty —</option><option value="__re__">RE result of everything owned</option>`+parts.map(p=>`<option value="${p.id}">${esc(p.name)}${p.cand?' (not owned)':''}</option>`).join('');
-    sel.value=state.slots[t]||''; if(sel.value!==(state.slots[t]||'')) state.slots[t]='';
-    sel.onchange=()=>{ state.slots[t]=sel.value; save(); renderBalance(); };
-    row.append(l,sel); el.appendChild(row);
+    const thr=currentThr(), label=thr>=100?'all green':thr>=80?'all blue':thr+'%+';
+    sel.innerHTML=`<option value="">— empty —</option><option value="__target__">Cheapest ${label} combo</option><option value="__best__">Best possible combo</option><optgroup label="A specific part">`+parts.map(p=>`<option value="${p.id}">${esc(p.name)}${p.cand?' (not owned)':''}</option>`).join('')+'</optgroup>';
+    if(state.slots[t]==='__re__') state.slots[t]='__best__'; sel.value=state.slots[t]||''; if(sel.value!==(state.slots[t]||'')) state.slots[t]='';
+    sel.onchange=()=>{ state.slots[t]=sel.value; save(); renderSlots(); renderBalance(); };
+    row.append(l,sel);
+    const v=state.slots[t];
+    if(v==='__best__'||v==='__target__'){
+      const c=comboFor(t, v==='__best__'?'best':'target');
+      const info=document.createElement('div'); info.style.flexBasis='100%'; info.style.paddingLeft='128px';
+      info.innerHTML=c?`<small class="dim">${c.map(p=>esc(p.name)).join(' + ')}</small>`:`<small class="shortfall">${v==='__target__'?'target not reachable with this stash — slot left empty':'no parts'}</small>`;
+      row.appendChild(info);
+    }
+    el.appendChild(row);
   });
+}
+function comboFor(t, mode){
+  const parts=state.parts.filter(p=>p.type===t&&p.on); if(!parts.length) return null;
+  const all=reMax(parts,t);
+  let combos;
+  if(mode==='best'){ const goal={}; attrsOf(t).forEach(a=>goal[a]=all[a]?all[a].pct:-Infinity); combos=findCombos(parts,t,goal,1); }
+  else combos=findCombos(parts,t,currentThr(),1);
+  return combos.length?combos[0]:null;
 }
 function slotAttrs(t){
   const v=state.slots[t]; if(!v) return null;
-  if(v==='__re__'){ const owned=state.parts.filter(p=>p.type===t&&p.on&&!p.cand); return owned.length?reMax(owned,t):null; }
+  if(v==='__best__'||v==='__target__'){ const c=comboFor(t, v==='__best__'?'best':'target'); return c?reMax(c,t):null; }
   const p=state.parts.find(x=>x.id===v); return p?Object.fromEntries(Object.entries(p.attrs).map(([a,x])=>[a,x.pct==null?null:x])):null;
 }
 function renderBalance(){

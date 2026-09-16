@@ -105,7 +105,7 @@ label.inline{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
 .perf-sep{grid-column:1/-1;height:1px;background:var(--line);margin:2px 0}
 
 /* results */
-.result-grid{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center;font-size:13px}
+.result-grid{display:grid;grid-template-columns:auto 1fr auto auto;gap:4px 10px;align-items:center;font-size:13px}
 .combo{padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:6px;background:var(--pane-2)}
 .combo .parts{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
 .chip{background:var(--bg);border:1px solid var(--line-2);border-radius:4px;padding:2px 8px;font-size:12px}
@@ -266,6 +266,8 @@ details summary{cursor:pointer;color:var(--ink-2)}
     <div class="stack" id="slots"></div>
     <h3>Result</h3>
     <div class="balance" id="balance-out"></div>
+    <h3>Speed</h3>
+    <div class="result-grid" id="perf-out"></div>
     <div class="assume">A (drain) = the balancing raws summed across your components; B (capacity) = the vehicle's innate capacity plus the raw on the one component that supplies it (chassis integrity, cooling, stabilization, power generation). Balanced when A ≤ B. Datapad format with no parts installed confirms A starts at 0.</div>
   </div>
 </section>
@@ -293,8 +295,8 @@ const SYSTEMS = [
 ];
 // vehicle innate capacities (datapad B values with no components installed). A is always 0 base.
 const VEHICLES = {
-  speederbike: {label:'Speederbike', cap:{mass:3750, stab:1400, cool:2000, energy:1800}},
-  custom:      {label:'Custom / other', cap:null},
+  speederbike: {label:'Speederbike', speed:22.0, cap:{mass:3750, stab:1400, cool:2000, energy:1800}},
+  custom:      {label:'Custom / other', speed:null, cap:null},
 };
 const qualOf = p => p>=100?'green':p>=80?'blue':p>=60?'yellow':p>=40?'orange':'red';
 
@@ -847,7 +849,8 @@ function statGrid(t, stats){
     const sp=document.createElement('span'); sp.className='an'; sp.textContent=a;
     const b=document.createElement('div'); b.className='bar '+(v?qualOf(v.pct):''); const i=document.createElement('i'); i.style.width=(v?Math.min(100,v.pct/125*100):0)+'%'; b.appendChild(i);
     const q=document.createElement('span'); q.className='q '+(v?'q-'+qualOf(v.pct):'dim'); q.textContent=v?fmt(v.pct)+'%':'—'; q.title=v&&v.from?'from '+v.from.name:'';
-    grid.append(sp,b,q);
+    const r=document.createElement('span'); r.className='araw'; r.textContent=(v&&v.raw!=null)?fmt(v.raw):''; r.title='raw value';
+    grid.append(sp,b,q,r);
   });
   return grid;
 }
@@ -910,6 +913,25 @@ function slotAttrs(t){
   if(v==='__best__'||v==='__target__'){ const c=comboFor(t, v==='__best__'?'best':'target'); return c?reMax(c,t):null; }
   const p=state.parts.find(x=>x.id===v); return p?Object.fromEntries(Object.entries(p.attrs).map(([a,x])=>[a,x.pct==null?null:x])):null;
 }
+function renderPerf(installed){
+  const el=document.getElementById('perf-out'); el.innerHTML='';
+  const v=VEHICLES[state.vehicle]||{};
+  const eng=installed.engine?.['Speed'], boo=installed.booster?.['Speed'];
+  const base=v.speed!=null?v.speed:null;
+  const top = (eng&&eng.raw!=null) ? Math.max(eng.raw, base??-Infinity) : base;
+  const boost = (top!=null && boo&&boo.raw!=null) ? top+boo.raw : null;
+  const row=(label,val,note,cls)=>{
+    const a=document.createElement('span'); a.className='sys'; a.textContent=label;
+    const b=document.createElement('span'); b.className=cls||''; b.style.gridColumn='2/4'; b.textContent=val;
+    const c=document.createElement('span'); c.className='dim'; c.innerHTML=note?`<small>${note}</small>`:'';
+    el.append(a,b,c);
+  };
+  if(base!=null) row('Vehicle base', fmt(base), 'stock speed with no engine');
+  row('Top speed', top!=null?fmt(top):'—', (eng&&eng.raw!=null&&base!=null)?(eng.raw>base?`engine replaces base (+${fmt(eng.raw-base)})`:'engine is slower than stock — don\'t install it'):(eng&&eng.raw==null?'engine has no raw value read':'no engine in a slot'), (eng&&eng.raw!=null&&base!=null&&eng.raw<=base)?'bad':'ok');
+  row('While boosting', boost!=null?fmt(boost):'—', boo?(boo.raw!=null?`+${fmt(boo.raw)} from booster`:'booster has no raw value read'):'no booster in a slot');
+  const unbalanced=SYSTEMS.filter(sy=>!sy._ok).length;
+  if(unbalanced){ const p=document.createElement('div'); p.style.gridColumn='1/-1'; p.className='shortfall'; p.innerHTML=`<small>${unbalanced} system${unbalanced>1?'s':''} out of balance — performance attributes take -25% each, so real speed will be lower than shown.</small>`; el.appendChild(p); }
+}
 function renderBalance(){
   const el=document.getElementById('balance-out'); el.innerHTML='<span class="dim"><small>System</small></span><span class="dim"><small>A</small></span><span class="dim"><small>B</small></span><span></span>';
   const installed={}; ORDER.forEach(t=>installed[t]=slotAttrs(t));
@@ -919,13 +941,14 @@ function renderBalance(){
     let A=b.a, B=b.b;
     s.numFrom.forEach(t=>{ const v=installed[t]?.[s.num]; if(v){ if(v.raw==null) missingRaw=true; else A+=v.raw; } });
     const dv=installed[s.denFrom]?.[s.den]; if(dv){ if(dv.raw==null) missingRaw=true; else B+=dv.raw; }
-    const ok=A<=B;
+    const ok=A<=B; s._ok=ok;
     const l=document.createElement('span'); l.className='sys'; l.textContent=s.label;
     const a=document.createElement('span'); a.textContent=fmt(A);
     const bb=document.createElement('span'); bb.textContent=fmt(B);
     const st=document.createElement('span'); st.className=ok?'ok':'bad'; st.textContent=ok?'balanced':'out of balance (-25%)'; st.title=`base ${fmt(b.a)}/${fmt(b.b)} + components ${fmt(A-b.a)}/${fmt(B-b.b)}`;
     el.append(l,a,bb,st);
   });
+  renderPerf(installed);
   if(missingRaw){ const n=document.createElement('div'); n.className='dim'; n.style.gridColumn='1/-1'; n.innerHTML='<small>Some installed parts have no raw values entered, so these sums are incomplete.</small>'; el.appendChild(n); }
 }
 

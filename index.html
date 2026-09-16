@@ -300,7 +300,7 @@ const qualOf = p => p>=100?'green':p>=80?'blue':p>=60?'yellow':p>=40?'orange':'r
 
 /* ---------- state + persistence ---------- */
 const KEY='swgr-vehicle-tinker-v1';
-let state = {parts:[], target:80, custom:90, base:{}, slots:{}, vehicle:'speederbike', filter:{type:'',text:'',own:'',sort:'newest',dir:1,collapsed:{}}};
+let state = {parts:[], target:80, custom:90, base:{}, slots:{}, vehicle:'speederbike', cardMode:{}, filter:{type:'',text:'',own:'',sort:'newest',dir:1,collapsed:{}}};
 let storageMode='memory';
 function load(){
   try{ const s=localStorage.getItem(KEY); storageMode='local'; if(s){ const j=JSON.parse(s); Object.assign(state, j); state.filter=Object.assign({type:'',text:'',own:'',sort:'newest',dir:1,collapsed:{}}, j.filter||{}); } }catch(e){ storageMode='memory'; }
@@ -356,7 +356,8 @@ function dominated(p, others, type){
 // minimal subsets whose element-wise max meets threshold on every attribute
 function findCombos(parts, type, thr, maxResults=6){
   const attrs=attrsOf(type);
-  const covers = parts.map(p=>attrs.map(a=>(p.attrs[a]?.pct??-1)>=thr));
+  const thrOf = a => (typeof thr==='number') ? thr : (thr[a] ?? -Infinity);
+  const covers = parts.map(p=>attrs.map(a=>(p.attrs[a]?.pct??-1)>=thrOf(a)));
   const need = attrs.length;
   const n=parts.length; const res=[];
   for(let k=1;k<=Math.min(n,6)&&res.length===0;k++){
@@ -754,35 +755,57 @@ function renderResults(){
   const el=document.getElementById('results'); el.innerHTML='';
   const thr=currentThr();
   let any=false;
+  const label = thr>=100?'all green':thr>=80?'all blue':thr+'%+';
   ORDER.forEach(t=>{
     const parts=state.parts.filter(p=>p.type===t&&p.on); if(!parts.length) return; any=true;
-    const card=document.createElement('div'); card.className='card';
     const owned=parts.filter(p=>!p.cand);
-    const all=reMax(parts,t), ownedRe=owned.length?reMax(owned,t):null;
-    let html=`<h2>${TYPES[t].label}</h2><h3>If you RE everything you own${owned.length?'':' (nothing owned yet)'}</h3>`;
-    const grid=document.createElement('div'); grid.className='result-grid';
-    attrsOf(t).forEach(a=>{
-      const v=(ownedRe||all)[a];
-      const sp=document.createElement('span'); sp.className='an'; sp.textContent=a;
-      const b=document.createElement('div'); b.className='bar '+(v?qualOf(v.pct):''); const i=document.createElement('i'); i.style.width=(v?Math.min(100,v.pct/125*100):0)+'%'; b.appendChild(i);
-      const q=document.createElement('span'); q.className='q '+(v?'q-'+qualOf(v.pct):'dim'); q.textContent=v?fmt(v.pct)+'%':'—'; q.title=v?'from '+v.from.name:'';
-      grid.append(sp,b,q);
-    });
-    const combos=findCombos(parts,t,thr);
-    const label = thr>=100?'all green':thr>=80?'all blue':thr+'%+';
-    let comboHtml=`<h3>Fewest parts to reach ${label}</h3>`;
-    if(combos.length){
-      const k=combos[0].length;
-      comboHtml+=`<p class="muted"><small>${k} part${k>1?'s':''} → ${k-1} modulator${k-1===1?'':'s'}. ${combos.length>1?combos.length+' ways to do it:':''}</small></p>`;
-      combos.forEach(c=>{
-        const buy=c.filter(p=>p.cand).length;
-        comboHtml+=`<div class="combo"><small class="muted">${buy?`buy ${buy}, `:''}RE ${c.length===1?'nothing — this part already qualifies':`these ${c.length} together`}</small><div class="parts">${c.map(p=>`<span class="chip${p.cand?' cand':''}">${esc(p.name)}</span>`).join('')}</div></div>`;
-      });
+    const mode=state.cardMode[t]||'target';
+    const card=document.createElement('div'); card.className='card';
+    // header + toggle
+    const head=document.createElement('div'); head.className='row between';
+    head.innerHTML=`<h2 style="margin:0">${TYPES[t].label}</h2>`;
+    const seg=document.createElement('div'); seg.className='segmented';
+    seg.innerHTML=`<button data-m="target" class="${mode==='target'?'on':''}">${label[0].toUpperCase()+label.slice(1)}</button><button data-m="best" class="${mode==='best'?'on':''}">Best possible</button>`;
+    seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{ state.cardMode[t]=b.dataset.m; save(); renderResults(); });
+    head.appendChild(seg); card.appendChild(head);
+
+    // which parts pool: everything ticked (owned + candidates). Best-possible uses all too, but flags buys.
+    const all=reMax(parts,t);
+    let combos, goal, title;
+    if(mode==='best'){
+      goal={}; attrsOf(t).forEach(a=>goal[a]=all[a]?all[a].pct:-Infinity);
+      combos=findCombos(parts,t,goal,6);
+      title='Best you can make from this stash';
     }else{
-      const short=attrsOf(t).filter(a=>!all[a]||all[a].pct<thr).map(a=>`${a} (best you have: ${all[a]?fmt(all[a].pct)+'%':'none'})`);
-      comboHtml+=`<p class="shortfall">Not reachable with this stash. Still need ${label} on: ${short.join(', ')}.</p>`;
+      combos=findCombos(parts,t,thr,6);
+      title=`Cheapest way to reach ${label}`;
     }
-    card.innerHTML=html; card.appendChild(grid); const cw=document.createElement('div'); cw.innerHTML=comboHtml; card.appendChild(cw);
+    const sub=document.createElement('h3'); sub.textContent=title; card.appendChild(sub);
+
+    if(!combos.length){
+      const short=attrsOf(t).filter(a=>!all[a]||all[a].pct<thr).map(a=>`${a} (best you have: ${all[a]?fmt(all[a].pct)+'%':'none'})`);
+      const p=document.createElement('p'); p.className='shortfall'; p.textContent=`Not reachable with this stash. Still need ${label} on: ${short.join(', ')}.`; card.appendChild(p);
+      // still show what you could make
+      const h=document.createElement('h3'); h.textContent='Best you can make anyway'; card.appendChild(h);
+      card.appendChild(statGrid(t, all));
+      el.appendChild(card); return;
+    }
+    const primary=combos[0], result=reMax(primary,t);
+    const k=primary.length, buy=primary.filter(p=>p.cand).length;
+    const note=document.createElement('p'); note.className='muted';
+    note.innerHTML=`<small>${k===1?'One part already does it — no RE needed':`${k} parts → ${k-1} modulator${k-1===1?'':'s'}`}${buy?` · buy ${buy} you've flagged`:''}${mode==='best'&&parts.length>k?` · the other ${parts.length-k} ${TYPES[t].label.toLowerCase()} part${parts.length-k===1?'':'s'} add nothing`:''}</small>`;
+    card.appendChild(note);
+    const chips=document.createElement('div'); chips.className='parts'; chips.style.margin='4px 0 8px';
+    chips.innerHTML=primary.map(p=>`<span class="chip${p.cand?' cand':''}">${esc(p.name)}</span>`).join('');
+    card.appendChild(chips);
+    const h=document.createElement('h3'); h.textContent='Result'; h.style.marginTop='6px'; card.appendChild(h);
+    card.appendChild(statGrid(t, result));
+    if(combos.length>1){
+      const det=document.createElement('details'); det.style.marginTop='8px';
+      det.innerHTML=`<summary><small>${combos.length-1} other way${combos.length>2?'s':''} with the same result</small></summary>`;
+      combos.slice(1).forEach(c=>{ const d=document.createElement('div'); d.className='combo'; d.innerHTML=`<div class="parts">${c.map(p=>`<span class="chip${p.cand?' cand':''}">${esc(p.name)}</span>`).join('')}</div>`; det.appendChild(d); });
+      card.appendChild(det);
+    }
     el.appendChild(card);
   });
   if(!any) el.innerHTML='<p class="dim">Add parts to see what you can build.</p>';
@@ -815,6 +838,17 @@ function renderShopping(thr){
   if(!anyOwned && !state.parts.length) html+='<p class="dim">Add the parts you own and this fills in.</p>';
   else if(!anyNeed) html+=`<p class="ok">Nothing to buy — every slot can reach ${label} from what you own.</p>`;
   el.innerHTML=html;
+}
+function statGrid(t, stats){
+  const grid=document.createElement('div'); grid.className='result-grid';
+  attrsOf(t).forEach(a=>{
+    const v=stats[a];
+    const sp=document.createElement('span'); sp.className='an'; sp.textContent=a;
+    const b=document.createElement('div'); b.className='bar '+(v?qualOf(v.pct):''); const i=document.createElement('i'); i.style.width=(v?Math.min(100,v.pct/125*100):0)+'%'; b.appendChild(i);
+    const q=document.createElement('span'); q.className='q '+(v?'q-'+qualOf(v.pct):'dim'); q.textContent=v?fmt(v.pct)+'%':'—'; q.title=v&&v.from?'from '+v.from.name:'';
+    grid.append(sp,b,q);
+  });
+  return grid;
 }
 let rt; function renderResultsDebounced(){ clearTimeout(rt); rt=setTimeout(renderResults,250); }
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));

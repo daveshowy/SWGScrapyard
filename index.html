@@ -178,7 +178,8 @@ details summary{cursor:pointer;color:var(--ink-2)}
     </div>
     <div class="row" style="margin-top:8px">
       <label class="inline"><span class="muted">Check every</span><input type="number" id="watch-interval" value="0.25" min="0.15" step="0.05" style="width:60px"> s</label>
-      <label class="inline"><input type="checkbox" id="watch-beep" checked> <span class="muted">Beep on capture</span></label>
+      <label class="inline"><input type="checkbox" id="watch-beep" checked> <span class="muted">Sounds</span></label>
+      <label class="inline"><span class="muted">Volume</span><input type="range" id="watch-vol" min="0" max="100" value="80" style="width:90px"><button class="btn small ghost" id="btn-test-sound" title="Test sounds">test</button></label>
       <label class="inline"><input type="checkbox" id="watch-cand"> <span class="muted">Mark captured parts as not owned</span></label>
     </div>
     <p class="ocr-status" id="watch-status" style="margin:8px 0 0">Draw a box over a component examine window first.</p>
@@ -501,15 +502,37 @@ const setWatchStatus=s=>document.getElementById('watch-status').textContent=s;
 function sigOf(type, attrs){ return type+'|'+attrsOf(type).map(a=>attrs[a]?.pct==null?'':Math.round(attrs[a].pct*10)).join(','); }
 function stashHasSig(sig){ return state.parts.some(p=>sigOf(p.type,p.attrs)===sig); }
 let audioCtx=null;
-function beep(){ if(!document.getElementById('watch-beep').checked) return; try{ audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)(); const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.frequency.value=880; g.gain.value=0.08; o.connect(g); g.connect(audioCtx.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.18); o.stop(audioCtx.currentTime+0.2); }catch(e){} }
+function tone(freq, dur, when, gain, type){
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=type||'sine'; o.frequency.setValueAtTime(freq, when);
+  const vol=gain*(+document.getElementById('watch-vol').value/100);
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol), when+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, when+dur);
+  o.connect(g); g.connect(audioCtx.destination); o.start(when); o.stop(when+dur+0.02);
+}
+function sound(kind){
+  if(!document.getElementById('watch-beep').checked) return;
+  try{
+    audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended') audioCtx.resume();
+    const t=audioCtx.currentTime+0.01;
+    if(kind==='add'){ tone(880,0.10,t,0.5); tone(1320,0.12,t+0.07,0.42); }              // rising two-note: captured
+    else if(kind==='warn'){ tone(700,0.10,t,0.45); tone(700,0.10,t+0.16,0.45); }        // double mid beep: check values
+    else if(kind==='dupe'){ tone(300,0.16,t,0.40,'square'); tone(190,0.22,t+0.13,0.40,'square'); } // falling buzz: already have it
+    else if(kind==='fail'){ tone(160,0.30,t,0.45,'sawtooth'); }                          // low growl: read failed
+  }catch(e){}
+}
+const beep=()=>sound('add');
 function logCapture(msg, ok){ const el=document.getElementById('watch-log'); const d=document.createElement('div'); d.className=ok?'':'dim'; d.innerHTML='<small>'+esc(msg)+'</small>'; el.prepend(d); while(el.children.length>8) el.lastChild.remove(); }
+document.getElementById('btn-test-sound').onclick=()=>{ ['add','warn','dupe','fail'].forEach((k,i)=>setTimeout(()=>sound(k), i*650)); };
 document.getElementById('btn-watch').onclick=()=>{ if(watching) stopWatch(); else startWatch(); };
 document.getElementById('btn-read-once').onclick=async()=>{ if(!watchBox||!sourceEl) return; const r=await ocrBox(); if(r){ document.getElementById('ocr-raw').value=r.text; applyParse(r.text); document.getElementById('ocr-card').hidden=false; setStatus('Done — check the numbers'); } };
 function startWatch(){
   if(!watchBox||!sourceEl) return;
   watching=true; lastSig=null; pendingSig=null; watchCount=0; prevGray=null; lastOcrGray=null; stableTicks=0; lastOcrAt=0;
   document.getElementById('btn-watch').textContent='Stop reading'; document.getElementById('btn-watch').classList.remove('primary');
-  beep(); // also unlocks audio while the user is still on this window
+  sound('add'); // also unlocks audio while the user is still on this window
   setWatchStatus('Reading… switch to the game and open each component. New parts are added automatically.');
   drawOverlay(); watchLoop();
 }
@@ -560,11 +583,11 @@ async function watchTick(){
   const suspect=attrsOf(type).filter(a=>!found[a]||found[a].bad||found[a].pct==null);
   const sig=sigOf(type,attrs);
   if(sig===lastSig){ setWatchStatus(`Same part still open · ${watchCount} captured`); return; }
-  if(stashHasSig(sig)){ lastSig=sig; logCapture(`${TYPES[type].label} skipped — already in stash`,false); return; }
+  if(stashHasSig(sig)){ lastSig=sig; sound('dupe'); logCapture(`${TYPES[type].label} skipped — already in stash`,false); return; }
   const n=state.parts.filter(x=>x.type===type).length+1; const name=`${TYPES[type].label} ${n}`;
   const warn=suspect.length?`Check: ${suspect.join(', ')} misread or missing`:null;
   state.parts.push({id:uid(), type, name, attrs, cand:document.getElementById('watch-cand').checked, on:true, src:'ocr', warn});
-  save(); renderAll(); lastSig=sig; watchCount++; beep(); if(warn) setTimeout(beep,220);
+  save(); renderAll(); lastSig=sig; watchCount++; sound(warn?'warn':'add');
   const summary=attrsOf(type).map(a=>attrs[a].pct==null?'?':fmt(attrs[a].pct)+'%').join(' / ');
   logCapture(`Added ${name}${warn?' ⚠ needs a check':''}: ${summary}`,true);
   setWatchStatus(`Added ${name} · ${watchCount} captured`); document.title=`(${watchCount}) Scrapyard`;
@@ -633,7 +656,7 @@ async function runOCR(x,y,w,h,quiet){
     const text=await recognizeFast(crop);
     if(quiet){ const wc=document.getElementById('watch-crop'); wc.width=crop.width; wc.height=crop.height; wc.getContext('2d').drawImage(crop,0,0); lastOcrMs=Math.round(performance.now()-t0); }
     return {text};
-  }catch(e){ if(!quiet){ setStatus('OCR failed: '+e.message+'. You can still type the numbers by hand.'); applyParse(''); } else logCapture('OCR failed: '+e.message,false); return null; }
+  }catch(e){ if(!quiet){ setStatus('OCR failed: '+e.message+'. You can still type the numbers by hand.'); applyParse(''); } else { sound('fail'); logCapture('OCR failed: '+e.message,false); } return null; }
 }
 function applyParse(text){
   const {type,found}=parseText(text);

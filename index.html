@@ -390,8 +390,8 @@ const ALIASES = {
   'Booster Duration':['booster duration','boost duration','duration'],
   'Booster Cooldown':['booster cooldown','boost cooldown','cooldown'],
   'Max Hitpoints':['max hitpoints','max hit points','hitpoints','hit points','max hp'],
-  'Turn Rate Max':['turn rate max','max turn rate','turn rate maximum','turning max'],
-  'Turn Rate':['turn rate','turning rate','turning'],
+  'Turn Rate Max':['turn rate max','max turn rate','turn rate maximum','turning max','tum rate max','tumrate max','tur rate max'],
+  'Turn Rate':['turn rate','turning rate','turning','tum rate','tumrate','tur rate'],
   'Stabilization':['stabilization','stabilisation'],
   'Fluctuation':['fluctuation'],
   'Integrity':['integrity','structural integrity'],
@@ -414,12 +414,20 @@ function parseText(text){
       const m=l.match(re);
       if(!m) continue;
       const rest=l.slice(m.index+m[0].length);
-      const nums=[...rest.matchAll(/(-?\d+(?:[.,]\d+)?)\s*(%)?/g)].map(x=>({v:+x[1].replace(',','.'), pct:!!x[2]}));
+      // in-game format is: Attribute: RAW (PCT%)  e.g. "Stabilization: 5467.2 (49.4%)"
+      // the parenthesised number is the quality %, the bare one is the raw value.
+      const nums=[...rest.matchAll(/(\()?\s*(-?\d+(?:[.,]\d+)?)\s*(%)?/g)]
+        .map(x=>({v:+x[2].replace(',','.'), paren:!!x[1], pct:!!x[3]}));
       if(!nums.length) continue;
       const plausible=x=>x.v>=0&&x.v<=PCT_MAX;
-      let pct=nums.find(x=>x.pct&&plausible(x))?.v, raw=nums.find(x=>!x.pct)?.v;
-      if(pct==null){ const alt=nums.find(plausible); if(alt){ pct=alt.v; const other=nums.find(x=>x!==alt); raw=other?other.v:raw; } }
-      if(pct==null && nums.length){ raw=raw??nums[0].v; }
+      // priority: number marked % → number in parentheses → the later number → any plausible one
+      let pctTok = nums.find(x=>x.pct&&plausible(x))
+                || nums.find(x=>x.paren&&plausible(x))
+                || (nums.length>1 && plausible(nums[nums.length-1]) ? nums[nums.length-1] : null)
+                || nums.find(plausible);
+      let pct = pctTok ? pctTok.v : null;
+      let raw = (nums.find(x=>x!==pctTok) || {}).v ?? null;
+      if(pct==null && raw==null && nums.length) raw=nums[0].v;
       if(!found[a]) found[a]={pct:pct??null, raw:raw??null, bad:pct==null};
       break;
     }
